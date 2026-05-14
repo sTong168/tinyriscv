@@ -138,6 +138,15 @@ module tinyriscv(
     wire uart_we;
     wire uart_req;
 
+    // i2c_send模块信号
+    wire i2c_start;
+    wire i2c_busy;
+    wire[`MemAddrBus] i2c_addr;
+    wire[`MemBus] i2c_wdata;
+    wire i2c_we;
+    wire i2c_req;
+    wire[`RegBus] i2c_result;
+
     // clint模块输出信号
     wire clint_we_o;
     wire[`MemAddrBus] clint_waddr_o;
@@ -342,7 +351,14 @@ module tinyriscv(
         .uart_addr_i(uart_addr),
         .uart_we_i(uart_we),
         .uart_req_i(uart_req),
-        .uart_start_o(uart_start)
+        .uart_start_o(uart_start),
+        .i2c_busy_i(i2c_busy),
+        .i2c_wdata_i(i2c_wdata),
+        .i2c_addr_i(i2c_addr),
+        .i2c_we_i(i2c_we),
+        .i2c_req_i(i2c_req),
+        .i2c_result_i(i2c_result),
+        .i2c_start_o(i2c_start)
     );
 
     // div模块例化
@@ -371,6 +387,20 @@ module tinyriscv(
         .wdata_o(uart_wdata),
         .we_o(uart_we),
         .req_o(uart_req)
+    );
+
+    // i2c_send模块例化
+    i2c_send u_i2c_send(
+        .clk(clk),
+        .rst(rst),
+        .start_i(i2c_start),
+        .mem_rdata_i(rib_ex_data_i),
+        .busy_o(i2c_busy),
+        .addr_o(i2c_addr),
+        .wdata_o(i2c_wdata),
+        .we_o(i2c_we),
+        .req_o(i2c_req),
+        .result_o(i2c_result)
     );
 
     // clint模块例化

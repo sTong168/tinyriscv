@@ -112,9 +112,11 @@ module ctrl(
         // 默认不暂停
         hold_flag_o = `Hold_None;
         // 按优先级处理不同模块的请求
-        if (jump_flag == `JumpEnable || hold_flag_ex == `HoldEnable || hold_flag_clint == `HoldEnable) begin
+        if (jump_flag == `JumpEnable || hold_flag_clint == `HoldEnable) begin
             // 暂停整条流水线
             hold_flag_o = `Hold_Id_clr;
+        end else if (hold_flag_ex == `HoldEnable) begin
+            hold_flag_o = `Hold_If_keep_Id_clr;
         end else if (ls_flag == `True) begin
             hold_flag_o = `Hold_If_keep_Id_clr;
         end else if (hold_flag_rib_i[0] == `HoldEnable) begin

@@ -155,9 +155,12 @@
 `define CSR_MSCRATCH 12'h340
 
 // Custom SID instruction (opcode 0x2f = custom-0)
-`define INST_TYPE_SID  7'b0101111
-`define INST_CUSTOM_UART 7'b0101111
+`define INST_TYPE_CUSTOM  7'b0101111
 `define INST_SID 3'b000
+`define INST_RT  3'b001
+
+// I2C read base address
+`define I2C_READ_ADDR 32'h70030000
 
 // Student ID digits (ASCII) — 学号: 2025210875
 `define ASCII_0  8'h32  // '2'

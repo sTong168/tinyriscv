@@ -53,6 +53,7 @@ def main():
     iverilog_cmd.append(rtl_dir + r'/rtl/perips/pwm.v')
     # ../rtl/core
     iverilog_cmd.append(rtl_dir + r'/rtl/core/uart_send.v')
+    iverilog_cmd.append(rtl_dir + r'/rtl/core/i2c_send.v')
     # ../rtl/debug
     iverilog_cmd.append(rtl_dir + r'/rtl/debug/jtag_dm.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/debug/jtag_driver.v')

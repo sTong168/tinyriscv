@@ -59,6 +59,17 @@ module ex(
     // to uart_send
     output reg uart_start_o,               // 开始UART发送标志
 
+    // from i2c_send
+    input wire i2c_busy_i,                 // I2C发送忙标志
+    input wire[`MemBus] i2c_wdata_i,       // I2C发送写数据
+    input wire[`MemAddrBus] i2c_addr_i,    // I2C发送地址
+    input wire i2c_we_i,                   // I2C发送写标志
+    input wire i2c_req_i,                  // I2C发送请求标志
+    input wire[`RegBus] i2c_result_i,      // I2C读取结果
+
+    // to i2c_send
+    output reg i2c_start_o,                // 开始I2C发送标志
+
     // to mem
     output reg[`MemBus] mem_wdata_o,        // 写内存数据
     output reg[`MemAddrBus] mem_raddr_o,    // 读内存地址
@@ -131,6 +142,8 @@ module ex(
     reg div_start;
     reg uart_hold_flag;
     reg[`InstAddrBus] uart_jump_addr;
+    reg i2c_hold_flag;
+    reg[`InstAddrBus] i2c_jump_addr;
 
     assign opcode = inst_i[6:0];
     assign funct3 = inst_i[14:12];
@@ -174,9 +187,9 @@ module ex(
     // 响应中断时不向总线请求访问内存
     assign mem_req_o = (int_assert_i == `INT_ASSERT)? `RIB_NREQ: mem_req;
 
-    assign hold_flag_o = hold_flag || div_hold_flag || uart_hold_flag;
+    assign hold_flag_o = hold_flag || div_hold_flag || uart_hold_flag || i2c_hold_flag;
     assign jump_flag_o = jump_flag || div_jump_flag || ((int_assert_i == `INT_ASSERT)? `JumpEnable: `JumpDisable);
-    assign jump_addr_o = (int_assert_i == `INT_ASSERT)? int_addr_i: (jump_addr | div_jump_addr | uart_jump_addr);
+    assign jump_addr_o = (int_assert_i == `INT_ASSERT)? int_addr_i: (jump_addr | div_jump_addr | uart_jump_addr | i2c_jump_addr);
     assign ls_flag_o = ls_flag;
 
     // 响应中断时不写CSR寄存器
@@ -271,6 +284,17 @@ module ex(
         end
     end
 
+    // I2C忙时强制暂停流水线
+    always @ (*) begin
+        if (i2c_busy_i == `True) begin
+            i2c_hold_flag = `HoldEnable;
+            i2c_jump_addr = inst_addr_i;
+        end else begin
+            i2c_hold_flag = `HoldDisable;
+            i2c_jump_addr = `ZeroWord;
+        end
+    end
+
     // 执行
     always @ (*) begin
         reg_we = reg_we_i;
@@ -278,6 +302,7 @@ module ex(
         mem_req = `RIB_NREQ;
         csr_wdata_o = `ZeroWord;
         uart_start_o = `False;
+        i2c_start_o = `False;
 
         case (opcode)
             `INST_TYPE_I: begin
@@ -887,32 +912,48 @@ module ex(
                 jump_flag = `JumpEnable;
                 jump_addr = op1_jump_add_op2_jump_res;
             end
-            `INST_TYPE_SID: begin
-                if (funct3 == `INST_SID) begin
-                    uart_start_o = `True;
-                    jump_flag = `JumpEnable;
-                    hold_flag = `HoldDisable;
-                    ls_flag   = `LSDisable;
-                    jump_addr = op1_jump_add_op2_jump_res;
-                    reg_we = `WriteDisable;
-                    reg_wdata = `ZeroWord;
-                    mem_wdata_o = `ZeroWord;
-                    mem_raddr_o = `ZeroWord;
-                    mem_waddr_o = `ZeroWord;
-                    mem_we = `WriteDisable;
-                end else begin
-                    uart_start_o = `False;
-                    jump_flag = `JumpDisable;
-                    hold_flag = `HoldDisable;
-                    ls_flag   = `LSDisable;
-                    jump_addr = `ZeroWord;
-                    reg_we = `WriteDisable;
-                    reg_wdata = `ZeroWord;
-                    mem_wdata_o = `ZeroWord;
-                    mem_raddr_o = `ZeroWord;
-                    mem_waddr_o = `ZeroWord;
-                    mem_we = `WriteDisable;
-                end
+            `INST_TYPE_CUSTOM: begin
+                case (funct3)
+                    `INST_SID: begin
+                        uart_start_o = `True;
+                        jump_flag = `JumpEnable;
+                        hold_flag = `HoldDisable;
+                        ls_flag   = `LSDisable;
+                        jump_addr = op1_jump_add_op2_jump_res;
+                        reg_we = `WriteDisable;
+                        reg_wdata = `ZeroWord;
+                        mem_wdata_o = `ZeroWord;
+                        mem_raddr_o = `ZeroWord;
+                        mem_waddr_o = `ZeroWord;
+                        mem_we = `WriteDisable;
+                    end
+                    `INST_RT: begin
+                        i2c_start_o = `True;
+                        jump_flag = `JumpDisable;
+                        hold_flag = `HoldDisable;
+                        ls_flag   = `LSDisable;
+                        jump_addr = `ZeroWord;
+                        reg_we = `WriteEnable;
+                        reg_wdata = i2c_result_i;
+                        mem_wdata_o = `ZeroWord;
+                        mem_raddr_o = `ZeroWord;
+                        mem_waddr_o = `ZeroWord;
+                        mem_we = `WriteDisable;
+                    end
+                    default: begin
+                        uart_start_o = `False;
+                        jump_flag = `JumpDisable;
+                        hold_flag = `HoldDisable;
+                        ls_flag   = `LSDisable;
+                        jump_addr = `ZeroWord;
+                        reg_we = `WriteDisable;
+                        reg_wdata = `ZeroWord;
+                        mem_wdata_o = `ZeroWord;
+                        mem_raddr_o = `ZeroWord;
+                        mem_waddr_o = `ZeroWord;
+                        mem_we = `WriteDisable;
+                    end
+                endcase
             end
             `INST_CSR: begin
                 jump_flag = `JumpDisable;
@@ -980,6 +1021,15 @@ module ex(
             mem_raddr_o = uart_addr_i;
             mem_waddr_o = uart_addr_i;
             mem_wdata_o = uart_wdata_i;
+        end
+
+        // I2C发送模块忙时，将总线控制权交给I2C发送模块
+        if (i2c_busy_i == `True) begin
+            mem_req = i2c_req_i;
+            mem_we = i2c_we_i;
+            mem_raddr_o = i2c_addr_i;
+            mem_waddr_o = i2c_addr_i;
+            mem_wdata_o = i2c_wdata_i;
         end
     end
 

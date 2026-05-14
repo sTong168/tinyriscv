@@ -289,7 +289,7 @@ module rib(
                     // end
                     slave_2: begin
                         s2_we_o = m1_we_i;
-                        s2_addr_o = m1_addr_i;
+                        s2_addr_o = {{4'h0}, {m1_addr_i[27:0]}};
                         s2_data_o = m1_data_i;
                         m1_data_o = s2_data_i;
                         s2_req_o  = m1_req_i;
