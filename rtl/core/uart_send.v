@@ -51,23 +51,25 @@ module uart_send(
                     we_o <= `WriteDisable;
                     req_o <= `RIB_NREQ;
                     if (start_i == `True) begin
-                        state <= STATE_INIT;
+                        state <= STATE_POLL;
                         busy_o <= `HoldEnable;
-                        addr_o <= UART_CTRL;
-                        wdata_o <= 32'h3;  // 使能UART TX和RX
-                        we_o <= `WriteEnable;
+                        // addr_o <= UART_CTRL;
+                        addr_o <= UART_STATUS;
+                        // wdata_o <= 32'h3;  // 使能UART TX和RX
+                        // we_o <= `WriteEnable;
+                        we_o <= `WriteDisable;
                         req_o <= `RIB_REQ;
                         byte_cnt <= 4'd0;
                     end
                 end
 
                 // UART初始化：写入0x3到UART_CTRL
-                STATE_INIT: begin
-                    state <= STATE_POLL;
-                    addr_o <= UART_STATUS;
-                    we_o <= `WriteDisable;
-                    req_o <= `RIB_REQ;
-                end
+                // STATE_INIT: begin
+                //     state <= STATE_POLL;
+                //     addr_o <= UART_STATUS;
+                //     we_o <= `WriteDisable;
+                //     req_o <= `RIB_REQ;
+                // end
 
                 // 轮询UART_STATUS，检查bit 0(TX忙标志)
                 STATE_POLL: begin
