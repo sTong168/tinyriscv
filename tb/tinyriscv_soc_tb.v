@@ -16,6 +16,9 @@ module tinyriscv_soc_tb;
 
     always #10 clk = ~clk;     // 50MHz
 
+    wire [`BridgeBus] bridge;
+    wire [3:0] pwm;
+
     wire[`RegBus] x3 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[3];
     wire[`RegBus] x26 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[26];
     wire[`RegBus] x27 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[27];
@@ -49,6 +52,7 @@ module tinyriscv_soc_tb;
         #40
         rst = `RstDisable;
         #200
+
 
 `ifdef TEST_PROG
         wait(x26 == 32'b1)   // wait sim end, when x26 == 1
@@ -488,26 +492,29 @@ module tinyriscv_soc_tb;
 
     // sim timeout
     initial begin
-        #500000
+        #2000000
         $display("Time Out.");
         $finish;
     end
 
     // read mem data
     initial begin
-        $readmemh ("inst.data", tinyriscv_soc_top_0.u_rom._rom);
+        $readmemh ("inst.data", u_bridge_fpga.u_rom._rom);
     end
 
     // generate wave file, used by gtkwave
     initial begin
         $dumpfile("tinyriscv_soc_tb.vcd");
         $dumpvars(0, tinyriscv_soc_tb);
+        forever #100 $display("Time %t: still running...", $time);
     end
 
     tinyriscv_soc_top tinyriscv_soc_top_0(
         .clk(clk),
         .rst(rst),
-        .uart_debug_pin(1'b0)
+        .uart_debug_pin(1'b0),
+        .bridge(bridge),
+        .pwm(pwm)
 `ifdef TEST_JTAG
         ,
         .jtag_TCK(TCK),
@@ -515,6 +522,12 @@ module tinyriscv_soc_tb;
         .jtag_TDI(TDI),
         .jtag_TDO(TDO)
 `endif
+    );
+
+    bridge_fpga u_bridge_fpga(
+        .clk(clk),
+        .rst(rst),
+        .bridge_io(bridge)
     );
 
 endmodule

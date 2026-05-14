@@ -44,6 +44,11 @@
 `define RIB_NREQ 1'b0
 `define INT_ASSERT 1'b1
 `define INT_DEASSERT 1'b0
+`define SEL_ROM 1'b0
+`define SEL_RAM 1'b1
+`define LSEnable 1'b1
+`define LSDisable 1'b0
+`define MEM_Start 4'b1010
 
 `define INT_BUS 7:0
 `define INT_NONE 8'h0
@@ -52,10 +57,13 @@
 `define INT_TIMER0_ENTRY_ADDR 32'h4
 
 `define Hold_Flag_Bus   2:0
-`define Hold_None 3'b000
-`define Hold_Pc   3'b001
-`define Hold_If   3'b010
-`define Hold_Id   3'b011
+`define Hold_None       3'b000
+`define Hold_Pc         3'b001
+`define Hold_If_keep    3'b010
+`define Hold_Id_keep    3'b011
+`define Hold_If_keep_Id_clr 3'b100
+`define Hold_If_clr     3'b110
+`define Hold_Id_clr     3'b111
 
 // I type inst
 `define INST_TYPE_I 7'b0010011
@@ -146,14 +154,33 @@
 `define CSR_MSTATUS 12'h300
 `define CSR_MSCRATCH 12'h340
 
-`define RomNum 4096  // rom depth(how many words)
+// Custom SID instruction (opcode 0x2f = custom-0)
+`define INST_TYPE_SID  7'b0101111
+`define INST_CUSTOM_UART 7'b0101111
+`define INST_SID 3'b000
 
-`define MemNum 4096  // memory depth(how many words)
+// Student ID digits (ASCII) — 学号: 2025210875
+`define ASCII_0  8'h32  // '2'
+`define ASCII_1  8'h30  // '0'
+`define ASCII_2  8'h32  // '2'
+`define ASCII_3  8'h35  // '5'
+`define ASCII_4  8'h32  // '2'
+`define ASCII_5  8'h31  // '1'
+`define ASCII_6  8'h30  // '0'
+`define ASCII_7  8'h38  // '8'
+`define ASCII_8  8'h37  // '7'
+`define ASCII_9  8'h35  // '5'
+
+`define RomNum 256  // rom depth(how many words)
+
+`define MemNum 16   // memory depth(how many words)
 `define MemBus 31:0
 `define MemAddrBus 31:0
 
 `define InstBus 31:0
 `define InstAddrBus 31:0
+
+`define BridgeBus 15:0
 
 // common regs
 `define RegAddrBus 4:0
@@ -162,3 +189,8 @@
 `define RegWidth 32
 `define RegNum 32        // reg num
 `define RegNumLog2 5
+
+// I2C controller macros
+`define I2C_FREE 2'd0
+`define I2C_BUSY 2'd1
+`define I2C_DONE 2'd2

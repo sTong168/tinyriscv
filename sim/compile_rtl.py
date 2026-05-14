@@ -14,17 +14,17 @@ def main():
     else:
         tb_file = r'/tb/tinyriscv_soc_tb.v'
 
-    # iverilog程序
+    # iverilog 程序
     iverilog_cmd = ['iverilog']
     # 顶层模块
-    #iverilog_cmd += ['-s', r'tinyriscv_soc_tb']
+    # iverilog_cmd += ['-s', r'tinyriscv_soc_tb']
     # 编译生成文件
     iverilog_cmd += ['-o', r'out.vvp']
-    # 头文件(defines.v)路径
+    # 头文件 (defines.v) 路径
     iverilog_cmd += ['-I', rtl_dir + r'/rtl/core']
     # 宏定义，仿真输出文件
     iverilog_cmd += ['-D', r'OUTPUT="signature.output"']
-    # testbench文件
+    # testbench 文件
     iverilog_cmd.append(rtl_dir + tb_file)
     # ../rtl/core
     iverilog_cmd.append(rtl_dir + r'/rtl/core/clint.v')
@@ -41,12 +41,18 @@ def main():
     iverilog_cmd.append(rtl_dir + r'/rtl/core/rib.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/core/tinyriscv.v')
     # ../rtl/perips
+    iverilog_cmd.append(rtl_dir + r'/rtl/perips/bridge.v')
+    iverilog_cmd.append(rtl_dir + r'/rtl/perips/bridge_fpga.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/perips/ram.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/perips/rom.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/perips/timer.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/perips/uart.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/perips/gpio.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/perips/spi.v')
+    iverilog_cmd.append(rtl_dir + r'/rtl/perips/i2c.v')
+    iverilog_cmd.append(rtl_dir + r'/rtl/perips/pwm.v')
+    # ../rtl/core
+    iverilog_cmd.append(rtl_dir + r'/rtl/core/uart_send.v')
     # ../rtl/debug
     iverilog_cmd.append(rtl_dir + r'/rtl/debug/jtag_dm.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/debug/jtag_driver.v')

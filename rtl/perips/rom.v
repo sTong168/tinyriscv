@@ -32,7 +32,6 @@ module rom(
 
     reg[`MemBus] _rom[0:`RomNum - 1];
 
-
     always @ (posedge clk) begin
         if (we_i == `WriteEnable) begin
             _rom[addr_i[31:2]] <= data_i;

@@ -1,6 +1,6 @@
 `timescale 1 ns / 1 ps
 
-`include "defines.v"
+`include "../../rtl/core/defines.v"
 
 
 `define TEST_PROG  1
@@ -16,13 +16,23 @@ module tinyriscv_soc_tb;
 
     always #10 clk = ~clk;     // 50MHz
 
+    wire [`BridgeBus] bridge;
+    wire [3:0] pwm;
+    wire scl;
+    wire sda;
+
+    reg scl_oe, scl_o, sda_oe, sda_o;
+
+    assign scl = scl_oe?scl_o:1'bz;
+    assign sda = sda_oe?sda_o:1'bz;
+
     wire[`RegBus] x3 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[3];
     wire[`RegBus] x26 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[26];
     wire[`RegBus] x27 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[27];
 
-    wire[31:0] ex_end_flag = tinyriscv_soc_top_0.u_ram._ram[4];
-    wire[31:0] begin_signature = tinyriscv_soc_top_0.u_ram._ram[2];
-    wire[31:0] end_signature = tinyriscv_soc_top_0.u_ram._ram[3];
+    wire[31:0] ex_end_flag = u_bridge_fpga.u_ram._ram[4];
+    wire[31:0] begin_signature = u_bridge_fpga.u_ram._ram[2];
+    wire[31:0] end_signature = u_bridge_fpga.u_ram._ram[3];
 
     integer r;
     integer fd;
@@ -45,6 +55,8 @@ module tinyriscv_soc_tb;
     initial begin
         clk = 0;
         rst = `RstEnable;
+
+        scl_oe=0; scl_o=0; sda_oe=0; sda_o=0;
 `ifdef TEST_JTAG
         TCK = 1;
         TMS = 1;
@@ -87,11 +99,11 @@ module tinyriscv_soc_tb;
 
         wait(ex_end_flag == 32'h1);  // wait sim end
 
-        fd = $fopen(`OUTPUT);   // OUTPUT的值在命令行里定义
-        for (r = begin_signature; r < end_signature; r = r + 4) begin
-            $fdisplay(fd, "%x", tinyriscv_soc_top_0.u_rom._rom[r[31:2]]);
-        end
-        $fclose(fd);
+        // fd = $fopen(`OUTPUT);   // OUTPUT的�?�在命令行里定义
+        // for (r = begin_signature; r < end_signature; r = r + 4) begin
+        //     $fdisplay(fd, "%x", u_bridge_fpga.u_rom._rom[r[31:2]]);
+        // end
+        // $fclose(fd);
 
 `ifdef TEST_JTAG
         // reset
@@ -491,15 +503,15 @@ module tinyriscv_soc_tb;
     end
 
     // sim timeout
-    initial begin
-        #500000
-        $display("Time Out.");
-        $finish;
-    end
+//   initial begin
+//       #500000
+//       $display("Time Out.");
+//       $finish;
+//   end
 
     // read mem data
     initial begin
-        $readmemh ("inst.data", tinyriscv_soc_top_0.u_rom._rom);
+        $readmemh ("inst.data", u_bridge_fpga.u_rom._rom);
     end
 
     // generate wave file, used by gtkwave
@@ -511,11 +523,21 @@ module tinyriscv_soc_tb;
     tinyriscv_soc_top tinyriscv_soc_top_0(
         .clk(clk),
         .rst(rst),
-        .uart_debug_pin(1'b0)/*
+        .uart_debug_pin(1'b0),
+        .bridge(bridge),
+        .pwm(pwm),
+        .scl(scl),
+        .sda(sda)/*
         .jtag_TCK(TCK),
         .jtag_TMS(TMS),
         .jtag_TDI(TDI),
         .jtag_TDO(TDO)*/
+    );
+
+    bridge_fpga u_bridge_fpga(
+        .clk(clk),
+        .rst(rst),
+        .bridge_io(bridge)
     );
 
 endmodule

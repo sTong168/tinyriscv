@@ -1,4 +1,6 @@
 # Object files
+/tools
+/.claude
 *.o
 *.ko
 *.obj

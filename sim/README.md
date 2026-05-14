@@ -39,4 +39,3 @@ Linux系统下：
 使用方法：
 
 `python test_all_isa.py`
-

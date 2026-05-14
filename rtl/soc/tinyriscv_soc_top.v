@@ -41,7 +41,14 @@ module tinyriscv_soc_top(
     input wire spi_miso,     // SPI MISO引脚
     output wire spi_mosi,    // SPI MOSI引脚
     output wire spi_ss,      // SPI SS引脚
-    output wire spi_clk      // SPI CLK引脚
+    output wire spi_clk,     // SPI CLK引脚
+
+    inout wire [`BridgeBus] bridge, // Bridge 通信总线
+
+    output wire [3:0] pwm,   // PWM 输出引脚
+
+    inout wire scl,          // I2C SCL   
+    inout wire sda           // I2C SDA
 
     );
 
@@ -52,6 +59,7 @@ module tinyriscv_soc_top(
     wire[`MemBus] m0_data_o;
     wire m0_req_i;
     wire m0_we_i;
+    wire m0_ack_o;
 
     // master 1 interface
     wire[`MemAddrBus] m1_addr_i;
@@ -59,6 +67,7 @@ module tinyriscv_soc_top(
     wire[`MemBus] m1_data_o;
     wire m1_req_i;
     wire m1_we_i;
+    wire m1_ack_o;
 
     // master 2 interface
     wire[`MemAddrBus] m2_addr_i;
@@ -66,6 +75,7 @@ module tinyriscv_soc_top(
     wire[`MemBus] m2_data_o;
     wire m2_req_i;
     wire m2_we_i;
+    wire m2_ack_o;
 
     // master 3 interface
     wire[`MemAddrBus] m3_addr_i;
@@ -73,45 +83,66 @@ module tinyriscv_soc_top(
     wire[`MemBus] m3_data_o;
     wire m3_req_i;
     wire m3_we_i;
+    wire m3_ack_o;
 
     // slave 0 interface
     wire[`MemAddrBus] s0_addr_o;
     wire[`MemBus] s0_data_o;
     wire[`MemBus] s0_data_i;
     wire s0_we_o;
+    wire s0_req_o;
+    wire s0_ack_i;
 
     // slave 1 interface
     wire[`MemAddrBus] s1_addr_o;
     wire[`MemBus] s1_data_o;
     wire[`MemBus] s1_data_i;
     wire s1_we_o;
+    wire s1_req_o;
+    wire s1_ack_i;
 
     // slave 2 interface
     wire[`MemAddrBus] s2_addr_o;
     wire[`MemBus] s2_data_o;
     wire[`MemBus] s2_data_i;
     wire s2_we_o;
+    wire s2_req_o;
+    wire s2_ack_i;
 
     // slave 3 interface
     wire[`MemAddrBus] s3_addr_o;
     wire[`MemBus] s3_data_o;
     wire[`MemBus] s3_data_i;
     wire s3_we_o;
+    wire s3_req_o;
+    wire s3_ack_i;
 
     // slave 4 interface
     wire[`MemAddrBus] s4_addr_o;
     wire[`MemBus] s4_data_o;
     wire[`MemBus] s4_data_i;
     wire s4_we_o;
+    wire s4_req_o;
+    wire s4_ack_i;
 
     // slave 5 interface
     wire[`MemAddrBus] s5_addr_o;
     wire[`MemBus] s5_data_o;
     wire[`MemBus] s5_data_i;
     wire s5_we_o;
+    wire s5_req_o;
+    wire s5_ack_i;
+
+    // slave 6 interface
+    wire[`MemAddrBus] s6_addr_o;
+    wire[`MemBus] s6_data_o;
+    wire[`MemBus] s6_data_i;
+    wire s6_we_o;
+    wire s6_req_o;
+    wire s6_ack_i;
 
     // rib
-    wire rib_hold_flag_o;
+    wire [1:0] rib_hold_flag_o;
 
     // jtag
     wire jtag_halt_req_o;
@@ -161,6 +192,7 @@ module tinyriscv_soc_top(
 
         .rib_pc_addr_o(m1_addr_i),
         .rib_pc_data_i(m1_data_o),
+        // .rib_pc_req_o(m1_req_i),
 
         .jtag_reg_addr_i(jtag_reg_addr_o),
         .jtag_reg_data_i(jtag_reg_data_o),
@@ -175,34 +207,61 @@ module tinyriscv_soc_top(
     );
 
     // rom模块例化
-    rom u_rom(
-        .clk(clk),
-        .rst(rst),
-        .we_i(s0_we_o),
-        .addr_i(s0_addr_o),
-        .data_i(s0_data_o),
-        .data_o(s0_data_i)
-    );
+    // rom u_rom(
+    //     .clk(clk),
+    //     .rst(rst),
+    //     .we_i(s0_we_o),
+    //     .addr_i(s0_addr_o),
+    //     .data_i(s0_data_o),
+    //     .data_o(s0_data_i)
+    // );
 
     // ram模块例化
-    ram u_ram(
-        .clk(clk),
-        .rst(rst),
-        .we_i(s1_we_o),
-        .addr_i(s1_addr_o),
-        .data_i(s1_data_o),
-        .data_o(s1_data_i)
-    );
+    // ram u_ram(
+    //     .clk(clk),
+    //     .rst(rst),
+    //     .we_i(s1_we_o),
+    //     .addr_i(s1_addr_o),
+    //     .data_i(s1_data_o),
+    //     .data_o(s1_data_i)
+    // );
+
+    // bridge模块例化
+    bridge u_bridge (
+    .clk(clk),
+    .rst(rst),
+    .addr_i(s0_addr_o),
+    .data_i(s0_data_o),
+    .data_o(s0_data_i),
+    .we_i(s0_we_o),
+    .valid_i(s0_req_o),
+    .ready_o(s0_ack_i),
+    .bridge_io(bridge)
+  );
 
     // timer模块例化
-    timer timer_0(
+    // timer timer_0(
+    //     .clk(clk),
+    //     .rst(rst),
+    //     .data_i(s2_data_o),
+    //     .addr_i(s2_addr_o),
+    //     .we_i(s2_we_o),
+    //     .data_o(s2_data_i),
+    //     .int_sig_o(timer0_int)
+    // );
+
+
+    // i2c模块例化
+    i2c i2c_0(
         .clk(clk),
         .rst(rst),
         .data_i(s2_data_o),
         .addr_i(s2_addr_o),
         .we_i(s2_we_o),
         .data_o(s2_data_i),
-        .int_sig_o(timer0_int)
+        .req_i(s2_req_o),
+        .scl(scl),
+        .sda(sda)
     );
 
     // uart模块例化
@@ -218,38 +277,38 @@ module tinyriscv_soc_top(
     );
 
     // io0
-    assign gpio[0] = (gpio_ctrl[1:0] == 2'b01)? gpio_data[0]: 1'bz;
-    assign io_in[0] = gpio[0];
+    // assign gpio[0] = (gpio_ctrl[1:0] == 2'b01)? gpio_data[0]: 1'bz;
+    // assign io_in[0] = gpio[0];
     // io1
-    assign gpio[1] = (gpio_ctrl[3:2] == 2'b01)? gpio_data[1]: 1'bz;
-    assign io_in[1] = gpio[1];
+    // assign gpio[1] = (gpio_ctrl[3:2] == 2'b01)? gpio_data[1]: 1'bz;
+    // assign io_in[1] = gpio[1];
 
     // gpio模块例化
-    gpio gpio_0(
-        .clk(clk),
-        .rst(rst),
-        .we_i(s4_we_o),
-        .addr_i(s4_addr_o),
-        .data_i(s4_data_o),
-        .data_o(s4_data_i),
-        .io_pin_i(io_in),
-        .reg_ctrl(gpio_ctrl),
-        .reg_data(gpio_data)
-    );
+    // gpio gpio_0(
+    //     .clk(clk),
+    //     .rst(rst),
+    //     .we_i(s4_we_o),
+    //     .addr_i(s4_addr_o),
+    //     .data_i(s4_data_o),
+    //     .data_o(s4_data_i),
+    //     .io_pin_i(io_in),
+    //     .reg_ctrl(gpio_ctrl),
+    //     .reg_data(gpio_data)
+    // );
 
     // spi模块例化
-    spi spi_0(
-        .clk(clk),
-        .rst(rst),
-        .data_i(s5_data_o),
-        .addr_i(s5_addr_o),
-        .we_i(s5_we_o),
-        .data_o(s5_data_i),
-        .spi_mosi(spi_mosi),
-        .spi_miso(spi_miso),
-        .spi_ss(spi_ss),
-        .spi_clk(spi_clk)
-    );
+    // spi spi_0(
+    //     .clk(clk),
+    //     .rst(rst),
+    //     .data_i(s5_data_o),
+    //     .addr_i(s5_addr_o),
+    //     .we_i(s5_we_o),
+    //     .data_o(s5_data_i),
+    //     .spi_mosi(spi_mosi),
+    //     .spi_miso(spi_miso),
+    //     .spi_ss(spi_ss),
+    //     .spi_clk(spi_clk)
+    // );
 
     // rib模块例化
     rib u_rib(
@@ -289,36 +348,56 @@ module tinyriscv_soc_top(
         .s0_data_o(s0_data_o),
         .s0_data_i(s0_data_i),
         .s0_we_o(s0_we_o),
+        .s0_req_o(s0_req_o),
+        .s0_ack_i(s0_ack_i),
 
         // slave 1 interface
         .s1_addr_o(s1_addr_o),
         .s1_data_o(s1_data_o),
         .s1_data_i(s1_data_i),
         .s1_we_o(s1_we_o),
+        .s1_req_o(s1_req_o),
+        .s1_ack_i(s1_ack_i),
 
         // slave 2 interface
         .s2_addr_o(s2_addr_o),
         .s2_data_o(s2_data_o),
         .s2_data_i(s2_data_i),
         .s2_we_o(s2_we_o),
+        .s2_req_o(s2_req_o),
+        .s2_ack_i(`RIB_ACK),
 
         // slave 3 interface
         .s3_addr_o(s3_addr_o),
         .s3_data_o(s3_data_o),
         .s3_data_i(s3_data_i),
         .s3_we_o(s3_we_o),
+        .s3_req_o(s3_req_o),
+        .s3_ack_i(`RIB_ACK),
 
         // slave 4 interface
         .s4_addr_o(s4_addr_o),
         .s4_data_o(s4_data_o),
         .s4_data_i(s4_data_i),
         .s4_we_o(s4_we_o),
+        .s4_req_o(s4_req_o),
+        .s4_ack_i(s4_ack_i),
 
         // slave 5 interface
         .s5_addr_o(s5_addr_o),
         .s5_data_o(s5_data_o),
         .s5_data_i(s5_data_i),
         .s5_we_o(s5_we_o),
+        .s5_req_o(s5_req_o),
+        .s5_ack_i(s5_ack_i),
+
+        // slave 6 interface
+        .s6_addr_o(s6_addr_o),
+        .s6_data_o(s6_data_o),
+        // .s6_data_i(s6_data_i),
+        .s6_we_o(s6_we_o),
+        // .s6_req_o(s6_req_o),
+        .s6_ack_i(`RIB_ACK),
 
         .hold_flag_o(rib_hold_flag_o)
     );
@@ -359,5 +438,14 @@ module tinyriscv_soc_top(
         .halt_req_o(jtag_halt_req_o),
         .reset_req_o(jtag_reset_req_o)
     );
+
+    pwm u_pwm (
+    .clk(clk),
+    .rst(rst),
+    .we_i(s6_we_o),
+    .addr_i(s6_addr_o),
+    .data_i(s6_data_o),
+    .pwm_o(pwm)
+  );
 
 endmodule

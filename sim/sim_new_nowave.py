@@ -9,12 +9,12 @@ import os
 def main():
     #print(sys.argv[0] + ' ' + sys.argv[1] + ' ' + sys.argv[2])
 
-    # 1.将bin文件转成mem文件
+    # 1.将 bin 文件转成 mem 文件
     cmd = r'python ../tools/BinToMem_CLI.py' + ' ' + sys.argv[1] + ' ' + sys.argv[2]
     f = os.popen(cmd)
     f.close()
 
-    # 2.编译rtl文件
+    # 2.编译 rtl 文件
     cmd = r'python compile_rtl.py' + r' ..'
     f = os.popen(cmd)
     f.close()

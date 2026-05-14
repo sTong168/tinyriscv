@@ -20,6 +20,45 @@ module gen_pipe_dff #(
 
     input wire clk,
     input wire rst,
+    input wire clear_en,
+    input wire hold_en,
+
+    input wire[DW-1:0] def_val,
+    input wire[DW-1:0] din,
+    output wire[DW-1:0] qout
+
+    );
+
+    reg[DW-1:0] qout_r;
+
+    // always @ (posedge clk) begin
+    //     if (!rst | hold_en) begin
+    //         qout_r <= def_val;
+    //     end else begin
+    //         qout_r <= din;
+    //     end
+    // end
+
+    always @ (posedge clk) begin
+        if (!rst | clear_en) begin
+            qout_r <= def_val;
+        end else if (hold_en) begin
+            qout_r <= qout_r;
+        end else begin
+            qout_r <= din;
+        end
+    end
+
+    assign qout = qout_r;
+
+endmodule
+
+// 带默认值和控制信号的流水线触发器,hold时值不变
+module gen_pipe_hold_dff #(
+    parameter DW = 32)(
+
+    input wire clk,
+    input wire rst,
     input wire hold_en,
 
     input wire[DW-1:0] def_val,
@@ -31,8 +70,10 @@ module gen_pipe_dff #(
     reg[DW-1:0] qout_r;
 
     always @ (posedge clk) begin
-        if (!rst | hold_en) begin
+        if (!rst) begin
             qout_r <= def_val;
+        end else if (hold_en) begin
+            qout_r <= qout_r;
         end else begin
             qout_r <= din;
         end

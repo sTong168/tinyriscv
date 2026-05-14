@@ -36,7 +36,7 @@ module tinyriscv(
     input wire jtag_reg_we_i,                  // jtag模块写寄存器标志
     output wire[`RegBus] jtag_reg_data_o,      // jtag模块读取到的寄存器数据
 
-    input wire rib_hold_flag_i,                // 总线暂停标志
+    input wire [1:0] rib_hold_flag_i,                // 总线暂停标志
     input wire jtag_halt_flag_i,               // jtag暂停标志
     input wire jtag_reset_flag_i,              // jtag复位PC标志
 
@@ -95,6 +95,7 @@ module tinyriscv(
     wire ex_reg_we_o;
     wire[`RegAddrBus] ex_reg_waddr_o;
     wire ex_hold_flag_o;
+    wire ex_ls_flag_o;
     wire ex_jump_flag_o;
     wire[`InstAddrBus] ex_jump_addr_o;
     wire ex_div_start_o;
@@ -129,6 +130,14 @@ module tinyriscv(
     wire div_busy_o;
     wire[`RegAddrBus] div_reg_waddr_o;
 
+    // uart_send模块信号
+    wire uart_start;
+    wire uart_busy;
+    wire[`MemAddrBus] uart_addr;
+    wire[`MemBus] uart_wdata;
+    wire uart_we;
+    wire uart_req;
+
     // clint模块输出信号
     wire clint_we_o;
     wire[`MemAddrBus] clint_waddr_o;
@@ -160,9 +169,11 @@ module tinyriscv(
 
     // ctrl模块例化
     ctrl u_ctrl(
+        .clk(clk),    
         .rst(rst),
         .jump_flag_i(ex_jump_flag_o),
         .jump_addr_i(ex_jump_addr_o),
+        .ls_flag_i(ex_ls_flag_o),
         .hold_flag_ex_i(ex_hold_flag_o),
         .hold_flag_rib_i(rib_hold_flag_i),
         .hold_flag_o(ctrl_hold_flag_o),
@@ -284,6 +295,7 @@ module tinyriscv(
 
     // ex模块例化
     ex u_ex(
+        .clk(clk),
         .rst(rst),
         .inst_i(ie_inst_o),
         .inst_addr_i(ie_inst_addr_o),
@@ -305,6 +317,7 @@ module tinyriscv(
         .reg_we_o(ex_reg_we_o),
         .reg_waddr_o(ex_reg_waddr_o),
         .hold_flag_o(ex_hold_flag_o),
+        .ls_flag_o(ex_ls_flag_o),
         .jump_flag_o(ex_jump_flag_o),
         .jump_addr_o(ex_jump_addr_o),
         .int_assert_i(clint_int_assert_o),
@@ -323,7 +336,13 @@ module tinyriscv(
         .csr_rdata_i(ie_csr_rdata_o),
         .csr_wdata_o(ex_csr_wdata_o),
         .csr_we_o(ex_csr_we_o),
-        .csr_waddr_o(ex_csr_waddr_o)
+        .csr_waddr_o(ex_csr_waddr_o),
+        .uart_busy_i(uart_busy),
+        .uart_wdata_i(uart_wdata),
+        .uart_addr_i(uart_addr),
+        .uart_we_i(uart_we),
+        .uart_req_i(uart_req),
+        .uart_start_o(uart_start)
     );
 
     // div模块例化
@@ -339,6 +358,19 @@ module tinyriscv(
         .ready_o(div_ready_o),
         .busy_o(div_busy_o),
         .reg_waddr_o(div_reg_waddr_o)
+    );
+
+    // uart_send模块例化
+    uart_send u_uart_send(
+        .clk(clk),
+        .rst(rst),
+        .start_i(uart_start),
+        .mem_rdata_i(rib_ex_data_i),
+        .busy_o(uart_busy),
+        .addr_o(uart_addr),
+        .wdata_o(uart_wdata),
+        .we_o(uart_we),
+        .req_o(uart_req)
     );
 
     // clint模块例化
