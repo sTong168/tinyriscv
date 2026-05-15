@@ -65,7 +65,9 @@ module ex(
     input wire[`MemAddrBus] i2c_addr_i,    // I2C发送地址
     input wire i2c_we_i,                   // I2C发送写标志
     input wire i2c_req_i,                  // I2C发送请求标志
-    input wire[`RegBus] i2c_result_i,      // I2C读取结果
+    input wire i2c_rf_we_i,                // I2C写寄存器使能
+    input wire[`RegAddrBus] i2c_rf_waddr_i,// I2C写寄存器地址
+    input wire[`RegBus] i2c_rf_wdata_i,    // I2C写寄存器数据
 
     // to i2c_send
     output reg i2c_start_o,                // 开始I2C发送标志
@@ -176,10 +178,10 @@ module ex(
 
     assign div_start_o = (int_assert_i == `INT_ASSERT)? `DivStop: div_start;
 
-    assign reg_wdata_o = reg_wdata | div_wdata;
+    assign reg_wdata_o = reg_wdata | div_wdata | i2c_rf_wdata_i;
     // 响应中断时不写通用寄存器
-    assign reg_we_o = (int_assert_i == `INT_ASSERT)? `WriteDisable: (reg_we || div_we);
-    assign reg_waddr_o = reg_waddr | div_waddr;
+    assign reg_we_o = (int_assert_i == `INT_ASSERT)? `WriteDisable: (reg_we || div_we || i2c_rf_we_i);
+    assign reg_waddr_o = reg_waddr | div_waddr | i2c_rf_waddr_i;
 
     // 响应中断时不写内存
     assign mem_we_o = (int_assert_i == `INT_ASSERT)? `WriteDisable: mem_we;
@@ -190,7 +192,7 @@ module ex(
     assign hold_flag_o = hold_flag || div_hold_flag || uart_hold_flag || i2c_hold_flag;
     assign jump_flag_o = jump_flag || div_jump_flag || ((int_assert_i == `INT_ASSERT)? `JumpEnable: `JumpDisable);
     assign jump_addr_o = (int_assert_i == `INT_ASSERT)? int_addr_i: (jump_addr | div_jump_addr | uart_jump_addr | i2c_jump_addr);
-    assign ls_flag_o = ls_flag;
+    assign ls_flag_o = ls_flag || i2c_busy_i;
 
     // 响应中断时不写CSR寄存器
     assign csr_we_o = (int_assert_i == `INT_ASSERT)? `WriteDisable: csr_we_i;
@@ -916,11 +918,10 @@ module ex(
                 case (funct3)
                     `INST_SID: begin
                         uart_start_o = `True;
-                        jump_flag = `JumpEnable;
+                        jump_flag = `JumpEnable; // ??
                         hold_flag = `HoldDisable;
                         ls_flag   = `LSDisable;
                         jump_addr = op1_jump_add_op2_jump_res;
-                        reg_we = `WriteDisable;
                         reg_wdata = `ZeroWord;
                         mem_wdata_o = `ZeroWord;
                         mem_raddr_o = `ZeroWord;
@@ -933,8 +934,7 @@ module ex(
                         hold_flag = `HoldDisable;
                         ls_flag   = `LSDisable;
                         jump_addr = `ZeroWord;
-                        reg_we = `WriteEnable;
-                        reg_wdata = i2c_result_i;
+                        reg_wdata = `ZeroWord;
                         mem_wdata_o = `ZeroWord;
                         mem_raddr_o = `ZeroWord;
                         mem_waddr_o = `ZeroWord;
@@ -946,7 +946,6 @@ module ex(
                         hold_flag = `HoldDisable;
                         ls_flag   = `LSDisable;
                         jump_addr = `ZeroWord;
-                        reg_we = `WriteDisable;
                         reg_wdata = `ZeroWord;
                         mem_wdata_o = `ZeroWord;
                         mem_raddr_o = `ZeroWord;

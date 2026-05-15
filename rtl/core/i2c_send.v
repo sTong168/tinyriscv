@@ -2,21 +2,24 @@
 
 // I2C发送模块
 // 用于实现自定义指令rT的I2C读写功能
-// 状态机：写0xA5到I2C_ADDR → 写0xE3到I2C_SEND → 轮询I2C_RECV直到DONE → 返回读取数据
+// 状态机：写0xA5到I2C_ADDR → 写0xE3到I2C_SEND → 轮询I2C_RECV直到DONE → 写结果到rd
 module i2c_send(
 
     input wire clk,
     input wire rst,
 
-    input wire start_i,                 // 开始发送信号(脉冲)
-    input wire[`MemBus] mem_rdata_i,    // 从总线读取的数据
+    input wire start_i,                     // 开始发送信号(脉冲)
+    input wire[`MemBus] mem_rdata_i,        // 从总线读取的数据
+    input wire[`RegAddrBus] reg_waddr_i,    // 目标寄存器rd地址(来自EX阶段)
 
-    output reg busy_o,                  // 忙标志
-    output reg[`MemAddrBus] addr_o,     // 读、写地址
-    output reg[`MemBus] wdata_o,        // 写数据
-    output reg we_o,                    // 写标志
-    output reg req_o,                   // 请求标志
-    output reg[`RegBus] result_o        // I2C读取的最终结果
+    output reg busy_o,                      // 忙标志(暂停流水线)
+    output reg[`MemAddrBus] addr_o,         // 读、写地址
+    output reg[`MemBus] wdata_o,            // 写数据
+    output reg we_o,                        // 写标志
+    output reg req_o,                       // 请求标志
+    output reg rf_we_o,                     // 写寄存器使能
+    output reg[`RegAddrBus] rf_waddr_o,     // 写寄存器地址
+    output reg[`RegBus] rf_wdata_o          // 写寄存器数据
 
     );
 
@@ -33,6 +36,8 @@ module i2c_send(
     localparam STATE_DONE    = 4'd4;
 
     reg[3:0] state;
+    reg[`RegAddrBus] saved_rd;
+    reg[`RegBus] result;
 
     always @(posedge clk) begin
         if (rst == `RstEnable) begin
@@ -42,7 +47,11 @@ module i2c_send(
             wdata_o <= `ZeroWord;
             we_o <= `WriteDisable;
             req_o <= `RIB_NREQ;
-            result_o <= `ZeroWord;
+            saved_rd <= `ZeroWord;
+            result <= `ZeroWord;
+            rf_we_o <= `WriteDisable;
+            rf_waddr_o <= `ZeroWord;
+            rf_wdata_o <= `ZeroWord;
         end else begin
             case (state)
                 // 空闲状态，等待开始信号
@@ -50,11 +59,15 @@ module i2c_send(
                     busy_o <= `HoldDisable;
                     we_o <= `WriteDisable;
                     req_o <= `RIB_NREQ;
+                    rf_we_o <= `WriteDisable;
+                    rf_waddr_o <= `ZeroWord;
+                    rf_wdata_o <= `ZeroWord;
                     if (start_i == `True) begin
+                        saved_rd <= reg_waddr_i;  // 保存rd，流水线暂停后EX的指令会被清空
                         state <= STATE_SET_ADDR;
                         busy_o <= `HoldEnable;
                         addr_o <= I2C_ADDR;
-                        wdata_o <= 32'hA5;      // I2C slave device address
+                        wdata_o <= 32'hA5;        // I2C slave device address
                         we_o <= `WriteEnable;
                         req_o <= `RIB_REQ;
                     end
@@ -64,7 +77,7 @@ module i2c_send(
                 STATE_SET_ADDR: begin
                     state <= STATE_TRIGGER;
                     addr_o <= I2C_SEND;
-                    wdata_o <= 32'hE3;          // trigger I2C transaction
+                    wdata_o <= 32'hE3;            // trigger I2C transaction
                     we_o <= `WriteEnable;
                     req_o <= `RIB_REQ;
                 end
@@ -81,11 +94,10 @@ module i2c_send(
                 STATE_POLL: begin
                     if (mem_rdata_i[31:30] == 2'b10) begin
                         // I2C传输完成，捕获结果
-                        result_o <= mem_rdata_i;
+                        result <= mem_rdata_i;
                         state <= STATE_DONE;
-                        busy_o <= `HoldDisable;
                         we_o <= `WriteDisable;
-                        req_o <= `RIB_NREQ;
+                        req_o <= `RIB_REQ;
                     end else begin
                         // 仍忙，继续轮询
                         state <= STATE_POLL;
@@ -95,12 +107,15 @@ module i2c_send(
                     end
                 end
 
-                // 完成，回到空闲状态
+                // 完成：写回目标寄存器，释放流水线
                 STATE_DONE: begin
                     state <= STATE_IDLE;
                     busy_o <= `HoldDisable;
                     we_o <= `WriteDisable;
                     req_o <= `RIB_NREQ;
+                    rf_we_o <= `WriteEnable;
+                    rf_waddr_o <= saved_rd;
+                    rf_wdata_o <= result;
                 end
 
                 default: begin
@@ -108,7 +123,9 @@ module i2c_send(
                     busy_o <= `HoldDisable;
                     we_o <= `WriteDisable;
                     req_o <= `RIB_NREQ;
-                    result_o <= `ZeroWord;
+                    rf_we_o <= `WriteDisable;
+                    rf_waddr_o <= `ZeroWord;
+                    rf_wdata_o <= `ZeroWord;
                 end
             endcase
         end

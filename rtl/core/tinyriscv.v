@@ -145,7 +145,9 @@ module tinyriscv(
     wire[`MemBus] i2c_wdata;
     wire i2c_we;
     wire i2c_req;
-    wire[`RegBus] i2c_result;
+    wire i2c_rf_we;
+    wire[`RegAddrBus] i2c_rf_waddr;
+    wire[`RegBus] i2c_rf_wdata;
 
     // clint模块输出信号
     wire clint_we_o;
@@ -357,7 +359,9 @@ module tinyriscv(
         .i2c_addr_i(i2c_addr),
         .i2c_we_i(i2c_we),
         .i2c_req_i(i2c_req),
-        .i2c_result_i(i2c_result),
+        .i2c_rf_we_i(i2c_rf_we),
+        .i2c_rf_waddr_i(i2c_rf_waddr),
+        .i2c_rf_wdata_i(i2c_rf_wdata),
         .i2c_start_o(i2c_start)
     );
 
@@ -395,12 +399,15 @@ module tinyriscv(
         .rst(rst),
         .start_i(i2c_start),
         .mem_rdata_i(rib_ex_data_i),
+        .reg_waddr_i(ie_reg_waddr_o),
         .busy_o(i2c_busy),
         .addr_o(i2c_addr),
         .wdata_o(i2c_wdata),
         .we_o(i2c_we),
         .req_o(i2c_req),
-        .result_o(i2c_result)
+        .rf_we_o(i2c_rf_we),
+        .rf_waddr_o(i2c_rf_waddr),
+        .rf_wdata_o(i2c_rf_wdata)
     );
 
     // clint模块例化

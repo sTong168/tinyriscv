@@ -88,11 +88,11 @@ module ctrl(
     // assign ls_flag = (hold_flag_rib_i[0] == `HoldDisable && hold_flag_rib_i[1] == `HoldEnable) ? ls_flag_i : `False;
 
     always @(*) begin
-        if (hold_flag_rib_i[0] == `HoldDisable) begin
+        if (hold_flag_rib_i[0] == `HoldDisable) begin // slave没有请求总线
             jump_flag = jump_flag_i;
             hold_flag_ex = hold_flag_ex_i;
             hold_flag_clint = hold_flag_clint_i;
-            if (hold_flag_rib_i[1] == `HoldEnable) begin
+            if (hold_flag_rib_i[1] == `HoldEnable) begin // master请求总线
                 ls_flag = ls_flag_i;
             end else begin
                 ls_flag = `False;
