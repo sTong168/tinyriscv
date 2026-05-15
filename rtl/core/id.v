@@ -266,16 +266,12 @@ module id(
                         reg_waddr_o = `ZeroReg;
                         reg1_raddr_o = `ZeroReg;
                         reg2_raddr_o = `ZeroReg;
-                        op1_jump_o = inst_addr_i;
-                        op2_jump_o = 32'h4;
                     end
                     `INST_RT: begin
                         reg_we_o = `WriteDisable;
                         reg_waddr_o = rd;
                         reg1_raddr_o = `ZeroReg;
                         reg2_raddr_o = `ZeroReg;
-                        op1_jump_o = inst_addr_i;
-                        op2_jump_o = 32'h4;
                     end
                     default: begin
                         reg_we_o = `WriteDisable;

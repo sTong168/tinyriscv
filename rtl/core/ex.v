@@ -918,10 +918,10 @@ module ex(
                 case (funct3)
                     `INST_SID: begin
                         uart_start_o = `True;
-                        jump_flag = `JumpEnable; // ??
+                        jump_flag = `JumpDisable;
                         hold_flag = `HoldDisable;
                         ls_flag   = `LSDisable;
-                        jump_addr = op1_jump_add_op2_jump_res;
+                        jump_addr = `ZeroWord;
                         reg_wdata = `ZeroWord;
                         mem_wdata_o = `ZeroWord;
                         mem_raddr_o = `ZeroWord;
