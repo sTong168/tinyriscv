@@ -11,8 +11,8 @@ module bridge (
     output wire [31:0] data_o   ,
     input  wire        we_i     ,
 
-    input  wire        valid_i  ,
-    output reg         ready_o  ,
+    input  wire        req_i  ,
+    output reg         ack_o  ,
 
     // interface to Bridge_FPGA
     inout       [15:0] bridge_io
@@ -55,10 +55,10 @@ module bridge (
     // State machine
     always @ (*) begin
         mem_sel = addr[28];
-        // ready_o = `False;
+        // ack_o = `False;
         case (state)
             // S_IDLE: begin
-            //     if (valid_i == `True && addr_i[31:29] == 3'b0) begin // ROM or RAM
+            //     if (req_i == `True && addr_i[31:29] == 3'b0) begin // ROM or RAM
             //         next_state = S_SEND_A;
             //     end else next_state = S_IDLE;
             // end
@@ -68,40 +68,40 @@ module bridge (
             // end
 
             S_SEND_A: begin
-                if (valid_i == `True && addr_i[31:29] == 3'b0) begin // ROM or RAM
+                if (req_i == `True && addr_i[31:29] == 3'b0) begin // ROM or RAM
                     next_state = (we_i == `WriteEnable) ? S_SEND_DH : S_IDLE;
                 end else next_state = S_SEND_A;
-                ready_o = `False;
+                ack_o = `False;
             end
 
             S_SEND_DH: begin
                 next_state = S_SEND_DL;
-                ready_o = `False;
+                ack_o = `False;
             end
 
             S_SEND_DL: begin
                 next_state = S_SEND_A;
-                ready_o = `True;
+                ack_o = `True;
             end
 
             S_IDLE: begin
                 next_state = S_RECV_DH;
-                ready_o = `False;
+                ack_o = `False;
             end
 
             S_RECV_DH: begin
                 next_state = S_RECV_DL;
-                ready_o = `False;
+                ack_o = `False;
             end
 
             S_RECV_DL: begin
                 next_state = S_SEND_A;
-                ready_o = `True;
+                ack_o = `True;
             end
 
             default: begin
                 next_state = S_SEND_A;
-                ready_o = `False;
+                ack_o = `False;
             end
         endcase
     end
@@ -112,7 +112,7 @@ module bridge (
             wdata     <= `ZeroWord;
             we        <= `WriteDisable;
             rdata     <= `ZeroWord;
-            // ready_o   <= `False   ;
+            // ack_o   <= `False   ;
             bridge_oe <= `False;
             bridge_in <= `ZeroWord;
         end else begin
@@ -120,8 +120,8 @@ module bridge (
                 // S_IDLE: begin
                 //     bridge_in <= `ZeroWord;
                 //     rdata     <= `ZeroWord;
-                //     ready_o   <= `False   ;
-                //     if (valid_i == `True && addr_i[31:29] == 3'b0) begin // ROM or RAM
+                //     ack_o   <= `False   ;
+                //     if (req_i == `True && addr_i[31:29] == 3'b0) begin // ROM or RAM
                 //         addr      <= addr_i;
                 //         wdata     <= data_i;
                 //         we        <= we_i;
@@ -141,8 +141,8 @@ module bridge (
 
                 S_SEND_A: begin
                     rdata     <= `ZeroWord;
-                    // ready_o   <= `False   ;
-                    if (valid_i == `True && addr_i[31:29] == 3'b0) begin // ROM or RAM
+                    // ack_o   <= `False   ;
+                    if (req_i == `True && addr_i[31:29] == 3'b0) begin // ROM or RAM
                         addr      <= addr_i;
                         wdata     <= data_i;
                         we        <= we_i;
@@ -165,7 +165,7 @@ module bridge (
 
                 S_SEND_DL: begin
                     bridge_in <= wdata[15:0];
-                    // ready_o <= `True;
+                    // ack_o <= `True;
                 end
 
                 S_IDLE: begin
@@ -178,20 +178,20 @@ module bridge (
 
                 S_RECV_DL: begin
                     rdata[15:0] <= bridge_io;
-                    // ready_o <= `True;
+                    // ack_o <= `True;
                 end
             endcase
         end
     end
 
-    // assign data_o = (ready_o == `False) ? `ZeroWord : rdata;
+    // assign data_o = (ack_o == `False) ? `ZeroWord : rdata;
 
-    assign data_o = (ready_o == `False) ? `ZeroWord : {rdata[31:16], bridge_io};
+    assign data_o = (ack_o == `False) ? `ZeroWord : {rdata[31:16], bridge_io};
 
     // always @(posedge clk) begin
     //     if (rst == `RstEnable) begin
     //         data_o <= `ZeroWord;
-    //     end else if (ready_o == `False) begin
+    //     end else if (ack_o == `False) begin
     //         data_o <= data_o;
     //     end else begin
     //         data_o <= {rdata[31:16], bridge_io};
@@ -201,10 +201,10 @@ module bridge (
     //     always @(posedge clk) begin
     //     if (rst == `RstEnable) begin
     //         data_o <= `ZeroWord;
-    //         ready_o <= `False;
+    //         ack_o <= `False;
     //     end else begin
     //         data_o <= ready ? {rdata[31:16], bridge_io} : data_o;
-    //         ready_o <= ready;
+    //         ack_o <= ready;
     //         // if (ready == `False) begin
     //         //     data_o <= data_o;
     //         // end else begin

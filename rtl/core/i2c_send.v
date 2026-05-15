@@ -17,9 +17,9 @@ module i2c_send(
     output reg[`MemBus] wdata_o,            // 写数据
     output reg we_o,                        // 写标志
     output reg req_o,                       // 请求标志
-    output reg rf_we_o,                     // 写寄存器使能
-    output reg[`RegAddrBus] rf_waddr_o,     // 写寄存器地址
-    output reg[`RegBus] rf_wdata_o          // 写寄存器数据
+    output reg reg_we_o,                     // 写寄存器使能
+    output reg[`RegAddrBus] reg_waddr_o,     // 写寄存器地址
+    output reg[`RegBus] reg_wdata_o          // 写寄存器数据
 
     );
 
@@ -49,9 +49,9 @@ module i2c_send(
             req_o <= `RIB_NREQ;
             saved_rd <= `ZeroWord;
             result <= `ZeroWord;
-            rf_we_o <= `WriteDisable;
-            rf_waddr_o <= `ZeroWord;
-            rf_wdata_o <= `ZeroWord;
+            reg_we_o <= `WriteDisable;
+            reg_waddr_o <= `ZeroWord;
+            reg_wdata_o <= `ZeroWord;
         end else begin
             case (state)
                 // 空闲状态，等待开始信号
@@ -59,9 +59,9 @@ module i2c_send(
                     busy_o <= `HoldDisable;
                     we_o <= `WriteDisable;
                     req_o <= `RIB_NREQ;
-                    rf_we_o <= `WriteDisable;
-                    rf_waddr_o <= `ZeroWord;
-                    rf_wdata_o <= `ZeroWord;
+                    reg_we_o <= `WriteDisable;
+                    reg_waddr_o <= `ZeroWord;
+                    reg_wdata_o <= `ZeroWord;
                     if (start_i == `True) begin
                         saved_rd <= reg_waddr_i;  // 保存rd，流水线暂停后EX的指令会被清空
                         state <= STATE_SET_ADDR;
@@ -113,9 +113,10 @@ module i2c_send(
                     busy_o <= `HoldDisable;
                     we_o <= `WriteDisable;
                     req_o <= `RIB_NREQ;
-                    rf_we_o <= `WriteEnable;
-                    rf_waddr_o <= saved_rd;
-                    rf_wdata_o <= result;
+                    reg_we_o <= `WriteEnable;
+                    reg_waddr_o <= saved_rd;
+                    // reg_wdata_o <= result;
+                    reg_wdata_o <= {24'b0, result[14:7]}; // 只读出温度芯片需要的位
                 end
 
                 default: begin
@@ -123,9 +124,9 @@ module i2c_send(
                     busy_o <= `HoldDisable;
                     we_o <= `WriteDisable;
                     req_o <= `RIB_NREQ;
-                    rf_we_o <= `WriteDisable;
-                    rf_waddr_o <= `ZeroWord;
-                    rf_wdata_o <= `ZeroWord;
+                    reg_we_o <= `WriteDisable;
+                    reg_waddr_o <= `ZeroWord;
+                    reg_wdata_o <= `ZeroWord;
                 end
             endcase
         end

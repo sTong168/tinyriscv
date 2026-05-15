@@ -234,8 +234,8 @@ module tinyriscv_soc_top(
     .data_i(s0_data_o),
     .data_o(s0_data_i),
     .we_i(s0_we_o),
-    .valid_i(s0_req_o),
-    .ready_o(s0_ack_i),
+    .req_i(s0_req_o),
+    .ack_o(s0_ack_i),
     .bridge_io(bridge)
   );
 

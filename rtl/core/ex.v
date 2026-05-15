@@ -65,9 +65,9 @@ module ex(
     input wire[`MemAddrBus] i2c_addr_i,    // I2C发送地址
     input wire i2c_we_i,                   // I2C发送写标志
     input wire i2c_req_i,                  // I2C发送请求标志
-    input wire i2c_rf_we_i,                // I2C写寄存器使能
-    input wire[`RegAddrBus] i2c_rf_waddr_i,// I2C写寄存器地址
-    input wire[`RegBus] i2c_rf_wdata_i,    // I2C写寄存器数据
+    input wire i2c_reg_we_i,                // I2C写寄存器使能
+    input wire[`RegAddrBus] i2c_reg_waddr_i,// I2C写寄存器地址
+    input wire[`RegBus] i2c_reg_wdata_i,    // I2C写寄存器数据
 
     // to i2c_send
     output reg i2c_start_o,                // 开始I2C发送标志
@@ -178,10 +178,10 @@ module ex(
 
     assign div_start_o = (int_assert_i == `INT_ASSERT)? `DivStop: div_start;
 
-    assign reg_wdata_o = reg_wdata | div_wdata | i2c_rf_wdata_i;
+    assign reg_wdata_o = reg_wdata | div_wdata | i2c_reg_wdata_i;
     // 响应中断时不写通用寄存器
-    assign reg_we_o = (int_assert_i == `INT_ASSERT)? `WriteDisable: (reg_we || div_we || i2c_rf_we_i);
-    assign reg_waddr_o = reg_waddr | div_waddr | i2c_rf_waddr_i;
+    assign reg_we_o = (int_assert_i == `INT_ASSERT)? `WriteDisable: (reg_we || div_we || i2c_reg_we_i);
+    assign reg_waddr_o = reg_waddr | div_waddr | i2c_reg_waddr_i;
 
     // 响应中断时不写内存
     assign mem_we_o = (int_assert_i == `INT_ASSERT)? `WriteDisable: mem_we;
