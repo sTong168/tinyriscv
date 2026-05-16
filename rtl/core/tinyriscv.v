@@ -149,6 +149,19 @@ module tinyriscv(
     wire[`RegAddrBus] i2c_reg_waddr;
     wire[`RegBus] i2c_reg_wdata;
 
+    // inst_if_ctrl模块信号
+    wire if_start;
+    wire if_busy;
+    wire[`MemAddrBus] if_addr;
+    wire[`MemBus] if_wdata;
+    wire if_we;
+    wire if_req;
+    wire if_reg_we;
+    wire[`RegAddrBus] if_reg_waddr;
+    wire[`RegBus] if_reg_wdata;
+    wire[7:0] if_send_byte;
+    wire[`RegAddrBus] if_rd_addr;
+
     // clint模块输出信号
     wire clint_we_o;
     wire[`MemAddrBus] clint_waddr_o;
@@ -362,7 +375,18 @@ module tinyriscv(
         .i2c_reg_we_i(i2c_reg_we),
         .i2c_reg_waddr_i(i2c_reg_waddr),
         .i2c_reg_wdata_i(i2c_reg_wdata),
-        .i2c_start_o(i2c_start)
+        .i2c_start_o(i2c_start),
+        .if_busy_i(if_busy),
+        .if_wdata_i(if_wdata),
+        .if_addr_i(if_addr),
+        .if_we_i(if_we),
+        .if_req_i(if_req),
+        .if_reg_we_i(if_reg_we),
+        .if_reg_waddr_i(if_reg_waddr),
+        .if_reg_wdata_i(if_reg_wdata),
+        .if_start_o(if_start),
+        .if_send_byte_o(if_send_byte),
+        .if_rd_addr_o(if_rd_addr)
     );
 
     // div模块例化
@@ -380,8 +404,8 @@ module tinyriscv(
         .reg_waddr_o(div_reg_waddr_o)
     );
 
-    // uart_send模块例化
-    uart_send u_uart_send(
+    // inst_sid_ctrl模块例化
+    inst_sid_ctrl u_inst_sid_ctrl(
         .clk(clk),
         .rst(rst),
         .start_i(uart_start),
@@ -394,7 +418,7 @@ module tinyriscv(
     );
 
     // i2c_send模块例化
-    i2c_send u_i2c_send(
+    inst_rt_ctrl u_inst_rt_ctrl(
         .clk(clk),
         .rst(rst),
         .start_i(i2c_start),
@@ -408,6 +432,24 @@ module tinyriscv(
         .reg_we_o(i2c_reg_we),
         .reg_waddr_o(i2c_reg_waddr),
         .reg_wdata_o(i2c_reg_wdata)
+    );
+
+    // inst_if_ctrl模块例化
+    inst_if_ctrl u_inst_if_ctrl(
+        .clk(clk),
+        .rst(rst),
+        .start_i(if_start),
+        .send_byte_i(if_send_byte),
+        .rd_addr_i(if_rd_addr),
+        .mem_rdata_i(rib_ex_data_i),
+        .busy_o(if_busy),
+        .addr_o(if_addr),
+        .wdata_o(if_wdata),
+        .we_o(if_we),
+        .req_o(if_req),
+        .reg_we_o(if_reg_we),
+        .reg_waddr_o(if_reg_waddr),
+        .reg_wdata_o(if_reg_wdata)
     );
 
     // clint模块例化

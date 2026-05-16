@@ -3,7 +3,7 @@
 // I2C发送模块
 // 用于实现自定义指令rT的I2C读写功能
 // 状态机：写0xA5到I2C_ADDR → 写0xE3到I2C_SEND → 轮询I2C_RECV直到DONE → 写结果到rd
-module i2c_send(
+module inst_rt_ctrl(
 
     input wire clk,
     input wire rst,

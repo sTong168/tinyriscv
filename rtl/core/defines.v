@@ -158,6 +158,7 @@
 `define INST_TYPE_CUSTOM  7'b0101111
 `define INST_SID 3'b000
 `define INST_RT  3'b001
+`define INST_IF  3'b010
 
 // I2C read base address
 `define I2C_READ_ADDR 32'h70030000

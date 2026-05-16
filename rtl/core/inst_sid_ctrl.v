@@ -3,7 +3,7 @@
 // UART发送模块
 // 用于实现自定义指令的UART发送功能
 // 状态机：写UART_CTRL初始化 → 轮询UART_STATUS → 写UART_TXDATA发送10位学号ASCII
-module uart_send(
+module inst_sid_ctrl(
 
     input wire clk,
     input wire rst,

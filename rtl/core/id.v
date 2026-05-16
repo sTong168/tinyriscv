@@ -273,6 +273,14 @@ module id(
                         reg1_raddr_o = `ZeroReg;
                         reg2_raddr_o = `ZeroReg;
                     end
+                    `INST_IF: begin
+                        reg_we_o = `WriteDisable;
+                        reg_waddr_o = rd;
+                        reg1_raddr_o = rs1;
+                        reg2_raddr_o = 5'd31;
+                        op1_o = reg1_rdata_i;
+                        op2_o = {{20{inst_i[31]}}, inst_i[31:20]};
+                    end
                     default: begin
                         reg_we_o = `WriteDisable;
                         reg_waddr_o = `ZeroReg;
