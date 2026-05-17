@@ -29,9 +29,9 @@
 `define UART_RX_OVER_FLAG       32'h2
 
 // 第一个包的大小
-`define UART_FIRST_PACKET_LEN   8'd131
+`define UART_FIRST_PACKET_LEN   8'd35
 // 其他包的大小(每次烧写的字节数)
-`define UART_REMAIN_PACKET_LEN  8'd131
+`define UART_REMAIN_PACKET_LEN  8'd35
 
 `define UART_RESP_ACK           32'h6
 `define UART_RESP_NAK           32'h15
@@ -256,7 +256,7 @@ module uart_debug(
         end else begin
             case (state)
                 S_CRC_START: begin
-                    fw_file_size <= {rx_data[61], rx_data[62], rx_data[63], rx_data[64]};
+                    fw_file_size <= {rx_data[25], rx_data[26], rx_data[27], rx_data[28]};
                 end
             endcase
         end

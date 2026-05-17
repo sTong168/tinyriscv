@@ -99,10 +99,10 @@ module tinyriscv_soc_tb;
         end
     endtask
 
-    task uart_send_packet;
+    task uart_send_packet(input integer len);
         integer pi;
         begin
-            for (pi = 0; pi < 131; pi = pi + 1)
+            for (pi = 0; pi < len; pi = pi + 1)
                 uart_send_byte(test_packet[pi]);
         end
     endtask
@@ -151,9 +151,9 @@ module tinyriscv_soc_tb;
         end
         total_bytes = data_words * 4;
 
-        // ==== Packet 0: filename + file size ====
+        // ==== Packet 0: filename + file size (35 bytes) ====
         test_packet[0] = 0;  // packet number
-        // filename: "inst.bin" (8 bytes), rest pad to 60 bytes
+        // filename: "inst.bin" (8 bytes), pad to 24 bytes
         test_packet[1]  = 8'h69; // 'i'
         test_packet[2]  = 8'h6e; // 'n'
         test_packet[3]  = 8'h73; // 's'
@@ -162,27 +162,27 @@ module tinyriscv_soc_tb;
         test_packet[6]  = 8'h62; // 'b'
         test_packet[7]  = 8'h69; // 'i'
         test_packet[8]  = 8'h6e; // 'n'
-        for (byte_idx = 9; byte_idx < 61; byte_idx = byte_idx + 1)
+        for (byte_idx = 9; byte_idx < 25; byte_idx = byte_idx + 1)
             test_packet[byte_idx] = 8'h00;
-        // file size at indices 61-64 (big-endian)
-        test_packet[61] = (total_bytes >> 24) & 8'hff;
-        test_packet[62] = (total_bytes >> 16) & 8'hff;
-        test_packet[63] = (total_bytes >>  8) & 8'hff;
-        test_packet[64] = (total_bytes >>  0) & 8'hff;
-        for (byte_idx = 65; byte_idx < 129; byte_idx = byte_idx + 1)
+        // file size at indices 25-28 (big-endian)
+        test_packet[25] = (total_bytes >> 24) & 8'hff;
+        test_packet[26] = (total_bytes >> 16) & 8'hff;
+        test_packet[27] = (total_bytes >>  8) & 8'hff;
+        test_packet[28] = (total_bytes >>  0) & 8'hff;
+        for (byte_idx = 29; byte_idx < 33; byte_idx = byte_idx + 1)
             test_packet[byte_idx] = 8'h00;
-        // CRC over data bytes (indices 1..128)
-        crc_val = calc_crc16(1, 128);
-        test_packet[129] = crc_val[7:0];
-        test_packet[130] = crc_val[15:8];
+        // CRC over data bytes (indices 1..32)
+        crc_val = calc_crc16(1, 32);
+        test_packet[33] = crc_val[7:0];
+        test_packet[34] = crc_val[15:8];
 
         // Delay to let SoC initialize UART baud rate
         #100000;
-        uart_send_packet;
-        #500000;
+        uart_send_packet(35);
+        #50000;
         $display("Packet 0 sent (%0d bytes total)", total_bytes);
 
-        // ==== Data packets ====
+        // ==== Data packets (35 bytes each, 32 data bytes per packet) ====
         pkt_num = 1;
         byte_idx = 0;
         // Number of data packets = fw_file_size/32 + 1 (matches uart_debug formula)
@@ -196,17 +196,18 @@ module tinyriscv_soc_tb;
             test_packet[byte_idx + 4] = tmp_word[31:24];
             byte_idx = byte_idx + 4;
 
-            if (byte_idx == 128 || r == data_words - 1) begin
+            if (byte_idx == 32 || r == data_words - 1) begin
                 test_packet[0] = pkt_num[7:0];
-                for (pi = byte_idx; pi < 128; pi = pi + 1)
+                // pad remaining data bytes
+                for (pi = byte_idx; pi < 32; pi = pi + 1)
                     test_packet[pi + 1] = 8'h00;
-                crc_val = calc_crc16(1, 128);
-                test_packet[129] = crc_val[7:0];
-                test_packet[130] = crc_val[15:8];
+                crc_val = calc_crc16(1, 32);
+                test_packet[33] = crc_val[7:0];
+                test_packet[34] = crc_val[15:8];
                 #50000;
-                uart_send_packet;
+                uart_send_packet(35);
                 $display("Packet %0d sent (%0d data bytes)", pkt_num, byte_idx);
-                #500000;
+                #50000;
                 pkt_num = pkt_num + 1;
                 byte_idx = 0;
             end
@@ -214,15 +215,15 @@ module tinyriscv_soc_tb;
         // Send remaining empty packets to satisfy uart_debug's count
         while (pkt_num <= pkt_total) begin
             test_packet[0] = pkt_num[7:0];
-            for (pi = 1; pi < 129; pi = pi + 1)
+            for (pi = 1; pi < 33; pi = pi + 1)
                 test_packet[pi] = 8'h00;
-            crc_val = calc_crc16(1, 128);
-            test_packet[129] = crc_val[7:0];
-            test_packet[130] = crc_val[15:8];
+            crc_val = calc_crc16(1, 32);
+            test_packet[33] = crc_val[7:0];
+            test_packet[34] = crc_val[15:8];
             #50000;
-            uart_send_packet;
+            uart_send_packet(35);
             $display("Empty packet %0d sent", pkt_num);
-            #500000;
+            #50000;
             pkt_num = pkt_num + 1;
         end
 
