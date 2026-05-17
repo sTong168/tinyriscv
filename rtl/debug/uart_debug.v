@@ -52,7 +52,8 @@ module uart_debug(
     output reg mem_we_o,
     output reg[31:0] mem_addr_o,
     output reg[31:0] mem_wdata_o,
-    input wire[31:0] mem_rdata_i
+    input wire[31:0] mem_rdata_i,
+    input wire ack_i                   // 写操作完成应答
 
     );
 
@@ -169,7 +170,7 @@ module uart_debug(
                 S_CRC_END: begin
                     if (crc_result == {rx_data[need_to_rec_bytes - 1], rx_data[need_to_rec_bytes - 2]}) begin
                         if (need_to_rec_bytes == `UART_FIRST_PACKET_LEN && remain_packet_count == 16'h0) begin
-                            remain_packet_count <= {7'h0, fw_file_size[31:7]} + 1'b1;
+                            remain_packet_count <= {7'h0, fw_file_size[31:5]} + 1'b1;
                             state <= S_SEND_ACK;
                         end else begin
                             remain_packet_count <= remain_packet_count - 1'b1;
@@ -271,11 +272,12 @@ module uart_debug(
                     write_mem_addr <= `ROM_START_ADDR;
                 end
                 S_CRC_END: begin
-                    if (write_mem_addr > 0)
-                        write_mem_addr <= write_mem_addr - 4;
+                    // with ack-gated writes, addr stays correct across packets
                 end
                 S_WRITE_MEM: begin
-                    write_mem_addr <= write_mem_addr + 4;
+                    if (ack_i == 1'b1) begin
+                        write_mem_addr <= write_mem_addr + 4;
+                    end
                 end
             endcase
         end
@@ -293,7 +295,9 @@ module uart_debug(
                     write_mem_data <= {rx_data[4], rx_data[3], rx_data[2], rx_data[1]};
                 end
                 S_WRITE_MEM: begin
-                    write_mem_data <= {rx_data[write_mem_byte_index3], rx_data[write_mem_byte_index2], rx_data[write_mem_byte_index1], rx_data[write_mem_byte_index0]};
+                    if (ack_i == 1'b1) begin
+                        write_mem_data <= {rx_data[write_mem_byte_index3], rx_data[write_mem_byte_index2], rx_data[write_mem_byte_index1], rx_data[write_mem_byte_index0]};
+                    end
                 end
             endcase
         end
@@ -311,7 +315,9 @@ module uart_debug(
                     write_mem_byte_index0 <= 8'h5;
                 end
                 S_WRITE_MEM: begin
-                    write_mem_byte_index0 <= write_mem_byte_index0 + 4;
+                    if (ack_i == 1'b1) begin
+                        write_mem_byte_index0 <= write_mem_byte_index0 + 4;
+                    end
                 end
             endcase
         end
@@ -329,7 +335,9 @@ module uart_debug(
                     write_mem_byte_index1 <= 8'h6;
                 end
                 S_WRITE_MEM: begin
-                    write_mem_byte_index1 <= write_mem_byte_index1 + 4;
+                    if (ack_i == 1'b1) begin
+                        write_mem_byte_index1 <= write_mem_byte_index1 + 4;
+                    end
                 end
             endcase
         end
@@ -347,7 +355,9 @@ module uart_debug(
                     write_mem_byte_index2 <= 8'h7;
                 end
                 S_WRITE_MEM: begin
-                    write_mem_byte_index2 <= write_mem_byte_index2 + 4;
+                    if (ack_i == 1'b1) begin
+                        write_mem_byte_index2 <= write_mem_byte_index2 + 4;
+                    end
                 end
             endcase
         end
@@ -365,7 +375,9 @@ module uart_debug(
                     write_mem_byte_index3 <= 8'h8;
                 end
                 S_WRITE_MEM: begin
-                    write_mem_byte_index3 <= write_mem_byte_index3 + 4;
+                    if (ack_i == 1'b1) begin
+                        write_mem_byte_index3 <= write_mem_byte_index3 + 4;
+                    end
                 end
             endcase
         end

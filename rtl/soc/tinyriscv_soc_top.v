@@ -31,17 +31,17 @@ module tinyriscv_soc_top(
 
     output wire uart_tx_pin, // UART发送引脚
     input wire uart_rx_pin,  // UART接收引脚
-    inout wire[1:0] gpio,    // GPIO引脚
+    // inout wire[1:0] gpio,    // GPIO引脚
 
     input wire jtag_TCK,     // JTAG TCK引脚
     input wire jtag_TMS,     // JTAG TMS引脚
     input wire jtag_TDI,     // JTAG TDI引脚
     output wire jtag_TDO,    // JTAG TDO引脚
 
-    input wire spi_miso,     // SPI MISO引脚
-    output wire spi_mosi,    // SPI MOSI引脚
-    output wire spi_ss,      // SPI SS引脚
-    output wire spi_clk,     // SPI CLK引脚
+    // input wire spi_miso,     // SPI MISO引脚
+    // output wire spi_mosi,    // SPI MOSI引脚
+    // output wire spi_ss,      // SPI SS引脚
+    // output wire spi_clk,     // SPI CLK引脚
 
     inout wire [`BridgeBus] bridge, // Bridge 通信总线
 
@@ -159,9 +159,9 @@ module tinyriscv_soc_top(
     wire timer0_int;
 
     // gpio
-    wire[1:0] io_in;
-    wire[31:0] gpio_ctrl;
-    wire[31:0] gpio_data;
+    // wire[1:0] io_in;
+    // wire[31:0] gpio_ctrl;
+    // wire[31:0] gpio_data;
 
     assign int_flag = {7'h0, timer0_int};
 
@@ -342,6 +342,7 @@ module tinyriscv_soc_top(
         .m3_data_o(m3_data_o),
         .m3_req_i(m3_req_i),
         .m3_we_i(m3_we_i),
+        .m3_ack_o(m3_ack_o),
 
         // slave 0 interface
         .s0_addr_o(s0_addr_o),
@@ -411,7 +412,8 @@ module tinyriscv_soc_top(
         .mem_we_o(m3_we_i),
         .mem_addr_o(m3_addr_i),
         .mem_wdata_o(m3_data_i),
-        .mem_rdata_i(m3_data_o)
+        .mem_rdata_i(m3_data_o),
+        .ack_i(m3_ack_o)
     );
 
     // jtag模块例化

@@ -50,6 +50,7 @@ module rib(
     output reg[`MemBus] m3_data_o,         // 主设备3读取到的数据
     input wire m3_req_i,                   // 主设备3访问请求标志
     input wire m3_we_i,                    // 主设备3写标志
+    output reg m3_ack_o,                  // 主设备3写应答
 
     // slave 0 interface
     output reg[`MemAddrBus] s0_addr_o,     // 从设备0读、写地址
@@ -177,6 +178,7 @@ module rib(
         m1_data_o = `INST_NOP;
         m2_data_o = `ZeroWord;
         m3_data_o = `ZeroWord;
+        m3_ack_o  = `RIB_NACK;
 
         s0_addr_o = `ZeroWord;
         s1_addr_o = `ZeroWord;
@@ -403,6 +405,7 @@ module rib(
                         s0_data_o = m3_data_i;
                         m3_data_o = s0_data_i;
                         s0_req_o  = m3_req_i;
+                        m3_ack_o  = s0_ack_i;
                         hold_flag_s = (s0_ack_i == `RIB_ACK) ? `HoldDisable : `HoldEnable;
                     end
                     // slave_1: begin
@@ -419,6 +422,7 @@ module rib(
                         s2_data_o = m3_data_i;
                         m3_data_o = s2_data_i;
                         s2_req_o  = m3_req_i;
+                        m3_ack_o  = s2_ack_i;
                         hold_flag_s = (s2_ack_i == `RIB_ACK) ? `HoldDisable : `HoldEnable;
                     end
                     slave_3: begin
@@ -427,6 +431,7 @@ module rib(
                         s3_data_o = m3_data_i;
                         m3_data_o = s3_data_i;
                         s3_req_o  = m3_req_i;
+                        m3_ack_o  = s3_ack_i;
                         hold_flag_s = (s3_ack_i == `RIB_ACK) ? `HoldDisable : `HoldEnable;
                     end
                     slave_4: begin
@@ -435,6 +440,7 @@ module rib(
                         s4_data_o = m3_data_i;
                         m3_data_o = s4_data_i;
                         s4_req_o  = m3_req_i;
+                        m3_ack_o  = s4_ack_i;
                         hold_flag_s = (s4_ack_i == `RIB_ACK) ? `HoldDisable : `HoldEnable;
                     end
                     slave_5: begin
@@ -443,6 +449,7 @@ module rib(
                         s5_data_o = m3_data_i;
                         m3_data_o = s5_data_i;
                         s5_req_o  = m3_req_i;
+                        m3_ack_o  = s5_ack_i;
                         hold_flag_s = (s5_ack_i == `RIB_ACK) ? `HoldDisable : `HoldEnable;
                     end
                     slave_6: begin
@@ -451,6 +458,7 @@ module rib(
                         s6_data_o = m3_data_i;
                         m3_data_o = s6_data_i;
                         s6_req_o  = m3_req_i;
+                        m3_ack_o  = s6_ack_i;
                         hold_flag_s = (s6_ack_i == `RIB_ACK) ? `HoldDisable : `HoldEnable;
                     end
                     default: begin

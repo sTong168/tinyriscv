@@ -5,7 +5,8 @@
 
 //`define TEST_PROG  1
 //`define TEST_JTAG  1
-`define TEST_I2C   1
+//`define TEST_I2C   1
+`define TEST_UART_DEBUG 1
 
 `ifdef TEST_I2C
     // I2C test data bytes sent by slave
@@ -37,6 +38,16 @@ module tinyriscv_soc_tb;
     assign scl = scl_oe?scl_o:1'bz;
     assign sda = sda_oe?sda_o:1'bz;
 
+    reg uart_debug_pin;
+    reg uart_rx_reg;               // 驱动 uart_rx_pin 的寄存器
+    wire uart_tx_pin;
+    wire uart_rx_pin;
+    assign uart_rx_pin = uart_rx_reg;
+
+    wire over;
+    wire succ;
+    wire halted_ind;
+
     wire[`RegBus] x3 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[3];
     wire[`RegBus] x26 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[26];
     wire[`RegBus] x27 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[27];
@@ -47,6 +58,55 @@ module tinyriscv_soc_tb;
 
     integer r;
     integer fd;
+
+    // ---- UART debug download simulation ----
+    localparam UART_BIT_NS = 8820;  // 50MHz, BAUD=0x1B8, bit period = 441*20ns
+    reg [7:0] test_packet [0:130];
+    reg [31:0] prog_mem [0:`RomNum-1];  // temp storage for program data
+    integer packet_idx, byte_idx, total_bytes, data_words, pkt_num, pi, pkt_total;
+    reg [31:0] tmp_word;
+    reg [15:0] crc_val;
+
+    function [15:0] calc_crc16(input integer start_idx, end_idx);
+        integer ci, cj;
+        reg [15:0] crc;
+        begin
+            crc = 16'hFFFF;
+            for (ci = start_idx; ci <= end_idx; ci = ci + 1) begin
+                crc = crc ^ {8'h00, test_packet[ci]};
+                for (cj = 0; cj < 8; cj = cj + 1) begin
+                    if (crc[0])
+                        crc = {1'b0, crc[15:1]} ^ 16'hA001;
+                    else
+                        crc = {1'b0, crc[15:1]};
+                end
+            end
+            calc_crc16 = crc;
+        end
+    endfunction
+
+    task uart_send_byte(input [7:0] data);
+        integer si;
+        begin
+            uart_rx_reg = 1'b0;           // start bit
+            #UART_BIT_NS;
+            for (si = 0; si < 8; si = si + 1) begin
+                uart_rx_reg = data[si];   // LSB first
+                #UART_BIT_NS;
+            end
+            uart_rx_reg = 1'b1;           // stop bit
+            #UART_BIT_NS;
+        end
+    endtask
+
+    task uart_send_packet;
+        integer pi;
+        begin
+            for (pi = 0; pi < 131; pi = pi + 1)
+                uart_send_byte(test_packet[pi]);
+        end
+    endtask
+    // ---- end UART debug simulation ----
 
 `ifdef TEST_JTAG
     reg TCK;
@@ -73,10 +133,110 @@ module tinyriscv_soc_tb;
         TMS = 1;
         TDI = 1;
 `endif
+        uart_debug_pin = 1'b0;
+`ifdef TEST_UART_DEBUG
+        uart_debug_pin = 1'b1;
+        uart_rx_reg = 1'b1;
+        #40
+        rst = `RstDisable;       // release reset after 40ns pulse
+        #200;                    // let uart_debug init UART baud rate
+
+        // Read inst.data into temp memory (NOT into ROM, ROM is written by uart_debug)
+        $readmemh("inst.data", prog_mem);
+        // Count valid words
+        data_words = 0;
+        for (r = 0; r < `RomNum; r = r + 1) begin
+            if (prog_mem[r] !== 32'bx)
+                data_words = r + 1;
+        end
+        total_bytes = data_words * 4;
+
+        // ==== Packet 0: filename + file size ====
+        test_packet[0] = 0;  // packet number
+        // filename: "inst.bin" (8 bytes), rest pad to 60 bytes
+        test_packet[1]  = 8'h69; // 'i'
+        test_packet[2]  = 8'h6e; // 'n'
+        test_packet[3]  = 8'h73; // 's'
+        test_packet[4]  = 8'h74; // 't'
+        test_packet[5]  = 8'h2e; // '.'
+        test_packet[6]  = 8'h62; // 'b'
+        test_packet[7]  = 8'h69; // 'i'
+        test_packet[8]  = 8'h6e; // 'n'
+        for (byte_idx = 9; byte_idx < 61; byte_idx = byte_idx + 1)
+            test_packet[byte_idx] = 8'h00;
+        // file size at indices 61-64 (big-endian)
+        test_packet[61] = (total_bytes >> 24) & 8'hff;
+        test_packet[62] = (total_bytes >> 16) & 8'hff;
+        test_packet[63] = (total_bytes >>  8) & 8'hff;
+        test_packet[64] = (total_bytes >>  0) & 8'hff;
+        for (byte_idx = 65; byte_idx < 129; byte_idx = byte_idx + 1)
+            test_packet[byte_idx] = 8'h00;
+        // CRC over data bytes (indices 1..128)
+        crc_val = calc_crc16(1, 128);
+        test_packet[129] = crc_val[7:0];
+        test_packet[130] = crc_val[15:8];
+
+        // Delay to let SoC initialize UART baud rate
+        #100000;
+        uart_send_packet;
+        #500000;
+        $display("Packet 0 sent (%0d bytes total)", total_bytes);
+
+        // ==== Data packets ====
+        pkt_num = 1;
+        byte_idx = 0;
+        // Number of data packets = fw_file_size/32 + 1 (matches uart_debug formula)
+        pkt_total = (total_bytes >> 5) + 1;  // divide by 32, +1
+        for (r = 0; r < data_words; r = r + 1) begin
+            tmp_word = prog_mem[r];
+            // Each word = 4 bytes, little-endian
+            test_packet[byte_idx + 1] = tmp_word[7:0];
+            test_packet[byte_idx + 2] = tmp_word[15:8];
+            test_packet[byte_idx + 3] = tmp_word[23:16];
+            test_packet[byte_idx + 4] = tmp_word[31:24];
+            byte_idx = byte_idx + 4;
+
+            if (byte_idx == 128 || r == data_words - 1) begin
+                test_packet[0] = pkt_num[7:0];
+                for (pi = byte_idx; pi < 128; pi = pi + 1)
+                    test_packet[pi + 1] = 8'h00;
+                crc_val = calc_crc16(1, 128);
+                test_packet[129] = crc_val[7:0];
+                test_packet[130] = crc_val[15:8];
+                #50000;
+                uart_send_packet;
+                $display("Packet %0d sent (%0d data bytes)", pkt_num, byte_idx);
+                #500000;
+                pkt_num = pkt_num + 1;
+                byte_idx = 0;
+            end
+        end
+        // Send remaining empty packets to satisfy uart_debug's count
+        while (pkt_num <= pkt_total) begin
+            test_packet[0] = pkt_num[7:0];
+            for (pi = 1; pi < 129; pi = pi + 1)
+                test_packet[pi] = 8'h00;
+            crc_val = calc_crc16(1, 128);
+            test_packet[129] = crc_val[7:0];
+            test_packet[130] = crc_val[15:8];
+            #50000;
+            uart_send_packet;
+            $display("Empty packet %0d sent", pkt_num);
+            #500000;
+            pkt_num = pkt_num + 1;
+        end
+
+        // All packets sent, release uart_debug_pin
+        #100000;
+        uart_debug_pin = 1'b0;
+        $display("All %0d packets sent, uart_debug_pin released", pkt_num - 1);
+`endif
         $display("test running...");
+`ifndef TEST_UART_DEBUG
         #40
         rst = `RstDisable;
         #200
+`endif
 /*
 `ifdef TEST_PROG
         wait(x26 == 32'b1)   // wait sim end, when x26 == 1
@@ -521,9 +681,11 @@ module tinyriscv_soc_tb;
 //   end
 
     // read mem data
+`ifndef TEST_UART_DEBUG
     initial begin
         $readmemh ("inst.data", u_bridge_fpga.u_rom._rom);
     end
+`endif
 
     // generate wave file, used by gtkwave
     initial begin
@@ -531,10 +693,53 @@ module tinyriscv_soc_tb;
         $dumpvars(0, tinyriscv_soc_tb);
     end
 
+`ifdef TEST_UART_DEBUG
+    // ---- Debug monitor for uart_debug ----
+    wire [13:0] dbg_state    = tinyriscv_soc_top_0.u_uart_debug.state;
+    wire [7:0]  dbg_need_rec = tinyriscv_soc_top_0.u_uart_debug.need_to_rec_bytes;
+    wire [15:0] dbg_rem_pkt  = tinyriscv_soc_top_0.u_uart_debug.remain_packet_count;
+    wire [7:0]  dbg_byte_idx0= tinyriscv_soc_top_0.u_uart_debug.write_mem_byte_index0;
+    wire [31:0] dbg_wr_addr  = tinyriscv_soc_top_0.u_uart_debug.write_mem_addr;
+    wire [15:0] dbg_crc_res  = tinyriscv_soc_top_0.u_uart_debug.crc_result;
+    wire [7:0]  dbg_rx_crc_h = tinyriscv_soc_top_0.u_uart_debug.rx_data[130];
+    wire [7:0]  dbg_rx_crc_l = tinyriscv_soc_top_0.u_uart_debug.rx_data[129];
+    wire [31:0] dbg_fw_size  = tinyriscv_soc_top_0.u_uart_debug.fw_file_size;
+    wire        dbg_ack      = tinyriscv_soc_top_0.u_uart_debug.ack_i;
+    wire        dbg_we       = tinyriscv_soc_top_0.u_uart_debug.mem_we_o;
+
+    reg [13:0] dbg_state_prev;
+    always @(posedge clk) begin
+        dbg_state_prev <= dbg_state;
+        if (dbg_state != dbg_state_prev) begin
+            case (dbg_state)
+                14'h1000: begin // S_CRC_END
+                    $display("[%0t] S_CRC_END: need_rec=%0d rem_pkt=%0d crc_res=0x%h rx_crc=0x%h%h fw_size=%0d",
+                             $time, dbg_need_rec, dbg_rem_pkt, dbg_crc_res, dbg_rx_crc_h, dbg_rx_crc_l, dbg_fw_size);
+                end
+                14'h2000: begin // S_WRITE_MEM
+                    $display("[%0t] S_WRITE_MEM: byte_idx0=%0d need_rec=%0d wr_addr=0x%h ack=%0d we=%0d",
+                             $time, dbg_byte_idx0, dbg_need_rec, dbg_wr_addr, dbg_ack, dbg_we);
+                end
+                14'h0100: begin // S_SEND_ACK
+                    $display("[%0t] S_SEND_ACK: rem_pkt=%0d", $time, dbg_rem_pkt);
+                end
+                14'h0200: begin // S_SEND_NAK
+                    $display("[%0t] S_SEND_NAK: rem_pkt=%0d", $time, dbg_rem_pkt);
+                end
+            endcase
+        end
+    end
+`endif
+
     tinyriscv_soc_top tinyriscv_soc_top_0(
         .clk(clk),
         .rst(rst),
-        .uart_debug_pin(1'b0),
+        .over(over),
+        .succ(succ),
+        .halted_ind(halted_ind),
+        .uart_debug_pin(uart_debug_pin),
+        .uart_tx_pin(uart_tx_pin),
+        .uart_rx_pin(uart_rx_pin),
         .bridge(bridge),
         .pwm(pwm),
         .scl(scl),
