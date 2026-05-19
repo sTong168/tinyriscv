@@ -1,5 +1,5 @@
 
-i2c:     file format elf32-littleriscv
+IF:     file format elf32-littleriscv
 
 
 Disassembly of section .init:
@@ -10,7 +10,7 @@ Disassembly of section .init:
    8:	84018113          	addi	sp,gp,-1984 # 10000040 <__freertos_irq_stack_top>
    c:	00000d13          	li	s10,0
   10:	00000d93          	li	s11,0
-  14:	2f800513          	li	a0,760
+  14:	33000513          	li	a0,816
   18:	10000597          	auipc	a1,0x10000
   1c:	fe858593          	addi	a1,a1,-24 # 10000000 <_data>
   20:	10000617          	auipc	a2,0x10000
@@ -28,7 +28,7 @@ Disassembly of section .init:
   50:	00052023          	sw	zero,0(a0)
   54:	00450513          	addi	a0,a0,4
   58:	feb56ce3          	bltu	a0,a1,50 <__stack_size+0x30>
-  5c:	1b0000ef          	jal	ra,20c <_init>
+  5c:	1e8000ef          	jal	ra,244 <_init>
   60:	124000ef          	jal	ra,184 <main>
   64:	00100d13          	li	s10,1
 
@@ -74,7 +74,7 @@ Disassembly of section .text:
 000000ec <test_if_asynchronous>:
   ec:	01f55613          	srli	a2,a0,0x1f
   f0:	00060663          	beqz	a2,fc <handle_synchronous>
-  f4:	14c000ef          	jal	ra,240 <trap_handler>
+  f4:	184000ef          	jal	ra,278 <trap_handler>
   f8:	00c0006f          	j	104 <asynchronous_return>
 
 000000fc <handle_synchronous>:
@@ -120,103 +120,117 @@ Disassembly of section .text:
  188:	00112e23          	sw	ra,28(sp)
  18c:	00812c23          	sw	s0,24(sp)
  190:	02010413          	addi	s0,sp,32
- 194:	fe042623          	sw	zero,-20(s0)
- 198:	700107b7          	lui	a5,0x70010
- 19c:	09000713          	li	a4,144
- 1a0:	00e7a023          	sw	a4,0(a5) # 70010000 <__global_pointer$+0x6000f800>
- 1a4:	700207b7          	lui	a5,0x70020
- 1a8:	0007a023          	sw	zero,0(a5) # 70020000 <__global_pointer$+0x6001f800>
- 1ac:	0100006f          	j	1bc <main+0x38>
- 1b0:	700307b7          	lui	a5,0x70030
- 1b4:	0007a783          	lw	a5,0(a5) # 70030000 <__global_pointer$+0x6002f800>
- 1b8:	fef42623          	sw	a5,-20(s0)
- 1bc:	fec42783          	lw	a5,-20(s0)
- 1c0:	01e7d713          	srli	a4,a5,0x1e
- 1c4:	00200793          	li	a5,2
- 1c8:	fef714e3          	bne	a4,a5,1b0 <main+0x2c>
- 1cc:	0f4000ef          	jal	ra,2c0 <uart_init>
- 1d0:	fec42783          	lw	a5,-20(s0)
- 1d4:	0ff7f793          	andi	a5,a5,255
- 1d8:	00078513          	mv	a0,a5
- 1dc:	098000ef          	jal	ra,274 <uart_putc>
- 1e0:	fec42783          	lw	a5,-20(s0)
- 1e4:	0087d793          	srli	a5,a5,0x8
+ 194:	164000ef          	jal	ra,2f8 <uart_init>
+ 198:	08000f93          	li	t6,128
+ 19c:	00000f33          	add	t5,zero,zero
+ 1a0:	00af2f2f          	amoadd.w	t5,a0,(t5)
+ 1a4:	000f0793          	mv	a5,t5
+ 1a8:	fef42623          	sw	a5,-20(s0)
+ 1ac:	fec42783          	lw	a5,-20(s0)
+ 1b0:	0ff7f793          	andi	a5,a5,255
+ 1b4:	00078513          	mv	a0,a5
+ 1b8:	0f4000ef          	jal	ra,2ac <uart_putc>
+ 1bc:	01af2f2f          	amoadd.w	t5,s10,(t5)
+ 1c0:	000f0793          	mv	a5,t5
+ 1c4:	fef42623          	sw	a5,-20(s0)
+ 1c8:	fec42783          	lw	a5,-20(s0)
+ 1cc:	0ff7f793          	andi	a5,a5,255
+ 1d0:	00078513          	mv	a0,a5
+ 1d4:	0d8000ef          	jal	ra,2ac <uart_putc>
+ 1d8:	03af2f2f          	amoadd.w.rl	t5,s10,(t5)
+ 1dc:	000f0793          	mv	a5,t5
+ 1e0:	fef42623          	sw	a5,-20(s0)
+ 1e4:	fec42783          	lw	a5,-20(s0)
  1e8:	0ff7f793          	andi	a5,a5,255
  1ec:	00078513          	mv	a0,a5
- 1f0:	084000ef          	jal	ra,274 <uart_putc>
- 1f4:	00000793          	li	a5,0
- 1f8:	00078513          	mv	a0,a5
- 1fc:	01c12083          	lw	ra,28(sp)
- 200:	01812403          	lw	s0,24(sp)
- 204:	02010113          	addi	sp,sp,32
- 208:	00008067          	ret
+ 1f0:	0bc000ef          	jal	ra,2ac <uart_putc>
+ 1f4:	02cf2f2f          	amoadd.w.rl	t5,a2,(t5)
+ 1f8:	000f0793          	mv	a5,t5
+ 1fc:	fef42623          	sw	a5,-20(s0)
+ 200:	fec42783          	lw	a5,-20(s0)
+ 204:	0ff7f793          	andi	a5,a5,255
+ 208:	00078513          	mv	a0,a5
+ 20c:	0a0000ef          	jal	ra,2ac <uart_putc>
+ 210:	000f2f2f          	amoadd.w	t5,zero,(t5)
+ 214:	000f0793          	mv	a5,t5
+ 218:	fef42623          	sw	a5,-20(s0)
+ 21c:	fec42783          	lw	a5,-20(s0)
+ 220:	0ff7f793          	andi	a5,a5,255
+ 224:	00078513          	mv	a0,a5
+ 228:	084000ef          	jal	ra,2ac <uart_putc>
+ 22c:	00000793          	li	a5,0
+ 230:	00078513          	mv	a0,a5
+ 234:	01c12083          	lw	ra,28(sp)
+ 238:	01812403          	lw	s0,24(sp)
+ 23c:	02010113          	addi	sp,sp,32
+ 240:	00008067          	ret
 
-0000020c <_init>:
- 20c:	ff010113          	addi	sp,sp,-16
- 210:	00812623          	sw	s0,12(sp)
- 214:	01010413          	addi	s0,sp,16
- 218:	000007b7          	lui	a5,0x0
- 21c:	06c78793          	addi	a5,a5,108 # 6c <trap_entry>
- 220:	30579073          	csrw	mtvec,a5
- 224:	000027b7          	lui	a5,0x2
- 228:	88878793          	addi	a5,a5,-1912 # 1888 <_data_lma+0x1590>
- 22c:	30079073          	csrw	mstatus,a5
- 230:	00000013          	nop
- 234:	00c12403          	lw	s0,12(sp)
- 238:	01010113          	addi	sp,sp,16
- 23c:	00008067          	ret
+00000244 <_init>:
+ 244:	ff010113          	addi	sp,sp,-16
+ 248:	00812623          	sw	s0,12(sp)
+ 24c:	01010413          	addi	s0,sp,16
+ 250:	000007b7          	lui	a5,0x0
+ 254:	06c78793          	addi	a5,a5,108 # 6c <trap_entry>
+ 258:	30579073          	csrw	mtvec,a5
+ 25c:	000027b7          	lui	a5,0x2
+ 260:	88878793          	addi	a5,a5,-1912 # 1888 <_data_lma+0x1558>
+ 264:	30079073          	csrw	mstatus,a5
+ 268:	00000013          	nop
+ 26c:	00c12403          	lw	s0,12(sp)
+ 270:	01010113          	addi	sp,sp,16
+ 274:	00008067          	ret
 
-00000240 <trap_handler>:
- 240:	fe010113          	addi	sp,sp,-32
- 244:	00112e23          	sw	ra,28(sp)
- 248:	00812c23          	sw	s0,24(sp)
- 24c:	02010413          	addi	s0,sp,32
- 250:	fea42623          	sw	a0,-20(s0)
- 254:	feb42423          	sw	a1,-24(s0)
- 258:	00000097          	auipc	ra,0x0
- 25c:	000000e7          	jalr	zero # 0 <_start>
- 260:	00000013          	nop
- 264:	01c12083          	lw	ra,28(sp)
- 268:	01812403          	lw	s0,24(sp)
- 26c:	02010113          	addi	sp,sp,32
- 270:	00008067          	ret
+00000278 <trap_handler>:
+ 278:	fe010113          	addi	sp,sp,-32
+ 27c:	00112e23          	sw	ra,28(sp)
+ 280:	00812c23          	sw	s0,24(sp)
+ 284:	02010413          	addi	s0,sp,32
+ 288:	fea42623          	sw	a0,-20(s0)
+ 28c:	feb42423          	sw	a1,-24(s0)
+ 290:	00000097          	auipc	ra,0x0
+ 294:	000000e7          	jalr	zero # 0 <_start>
+ 298:	00000013          	nop
+ 29c:	01c12083          	lw	ra,28(sp)
+ 2a0:	01812403          	lw	s0,24(sp)
+ 2a4:	02010113          	addi	sp,sp,32
+ 2a8:	00008067          	ret
 
-00000274 <uart_putc>:
- 274:	fe010113          	addi	sp,sp,-32
- 278:	00812e23          	sw	s0,28(sp)
- 27c:	02010413          	addi	s0,sp,32
- 280:	00050793          	mv	a5,a0
- 284:	fef407a3          	sb	a5,-17(s0)
- 288:	00000013          	nop
- 28c:	300007b7          	lui	a5,0x30000
- 290:	00478793          	addi	a5,a5,4 # 30000004 <__global_pointer$+0x1ffff804>
- 294:	0007a783          	lw	a5,0(a5)
- 298:	0017f793          	andi	a5,a5,1
- 29c:	fe0798e3          	bnez	a5,28c <uart_putc+0x18>
- 2a0:	300007b7          	lui	a5,0x30000
- 2a4:	00c78793          	addi	a5,a5,12 # 3000000c <__global_pointer$+0x1ffff80c>
- 2a8:	fef44703          	lbu	a4,-17(s0)
- 2ac:	00e7a023          	sw	a4,0(a5)
- 2b0:	00000013          	nop
- 2b4:	01c12403          	lw	s0,28(sp)
- 2b8:	02010113          	addi	sp,sp,32
- 2bc:	00008067          	ret
-
-000002c0 <uart_init>:
- 2c0:	ff010113          	addi	sp,sp,-16
- 2c4:	00812623          	sw	s0,12(sp)
- 2c8:	01010413          	addi	s0,sp,16
- 2cc:	300007b7          	lui	a5,0x30000
- 2d0:	00300713          	li	a4,3
- 2d4:	00e7a023          	sw	a4,0(a5) # 30000000 <__global_pointer$+0x1ffff800>
- 2d8:	100007b7          	lui	a5,0x10000
- 2dc:	00000737          	lui	a4,0x0
- 2e0:	27470713          	addi	a4,a4,628 # 274 <uart_putc>
- 2e4:	00e7a023          	sw	a4,0(a5) # 10000000 <_data>
+000002ac <uart_putc>:
+ 2ac:	fe010113          	addi	sp,sp,-32
+ 2b0:	00812e23          	sw	s0,28(sp)
+ 2b4:	02010413          	addi	s0,sp,32
+ 2b8:	00050793          	mv	a5,a0
+ 2bc:	fef407a3          	sb	a5,-17(s0)
+ 2c0:	00000013          	nop
+ 2c4:	300007b7          	lui	a5,0x30000
+ 2c8:	00478793          	addi	a5,a5,4 # 30000004 <__global_pointer$+0x1ffff804>
+ 2cc:	0007a783          	lw	a5,0(a5)
+ 2d0:	0017f793          	andi	a5,a5,1
+ 2d4:	fe0798e3          	bnez	a5,2c4 <uart_putc+0x18>
+ 2d8:	300007b7          	lui	a5,0x30000
+ 2dc:	00c78793          	addi	a5,a5,12 # 3000000c <__global_pointer$+0x1ffff80c>
+ 2e0:	fef44703          	lbu	a4,-17(s0)
+ 2e4:	00e7a023          	sw	a4,0(a5)
  2e8:	00000013          	nop
- 2ec:	00c12403          	lw	s0,12(sp)
- 2f0:	01010113          	addi	sp,sp,16
+ 2ec:	01c12403          	lw	s0,28(sp)
+ 2f0:	02010113          	addi	sp,sp,32
  2f4:	00008067          	ret
+
+000002f8 <uart_init>:
+ 2f8:	ff010113          	addi	sp,sp,-16
+ 2fc:	00812623          	sw	s0,12(sp)
+ 300:	01010413          	addi	s0,sp,16
+ 304:	300007b7          	lui	a5,0x30000
+ 308:	00300713          	li	a4,3
+ 30c:	00e7a023          	sw	a4,0(a5) # 30000000 <__global_pointer$+0x1ffff800>
+ 310:	100007b7          	lui	a5,0x10000
+ 314:	00000737          	lui	a4,0x0
+ 318:	2ac70713          	addi	a4,a4,684 # 2ac <uart_putc>
+ 31c:	00e7a023          	sw	a4,0(a5) # 10000000 <_data>
+ 320:	00000013          	nop
+ 324:	00c12403          	lw	s0,12(sp)
+ 328:	01010113          	addi	sp,sp,16
+ 32c:	00008067          	ret
 
 Disassembly of section .bss:
 

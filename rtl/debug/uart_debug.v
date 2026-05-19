@@ -77,7 +77,7 @@ module uart_debug(
     reg[13:0] state;
 
     // 存放串口接收到的数据
-    reg[7:0] rx_data[0:131];
+    reg[7:0] rx_data[0:34];
     reg[7:0] rec_bytes_index;
     reg[7:0] need_to_rec_bytes;
     reg[15:0] remain_packet_count;

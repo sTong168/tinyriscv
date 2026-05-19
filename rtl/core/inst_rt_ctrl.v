@@ -67,7 +67,7 @@ module inst_rt_ctrl(
                         state <= STATE_SET_ADDR;
                         busy_o <= `HoldEnable;
                         addr_o <= I2C_ADDR;
-                        wdata_o <= 32'hA5;        // I2C slave device address
+                        wdata_o <= 32'h90;        // I2C slave device address
                         we_o <= `WriteEnable;
                         req_o <= `RIB_REQ;
                     end
@@ -77,7 +77,7 @@ module inst_rt_ctrl(
                 STATE_SET_ADDR: begin
                     state <= STATE_TRIGGER;
                     addr_o <= I2C_SEND;
-                    wdata_o <= 32'hE3;            // trigger I2C transaction
+                    wdata_o <= 32'h00;            // trigger I2C transaction
                     we_o <= `WriteEnable;
                     req_o <= `RIB_REQ;
                 end

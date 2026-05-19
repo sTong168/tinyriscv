@@ -53,7 +53,7 @@ module i2c_tb();
     //  主机读取时返回: TX_BYTE1=0xA5, TX_BYTE2=0x5A
     //
     //  处理完整的 I2C 序列:
-    //    START + Addr+W + data + Addr+R + byte1 + byte2 + STOP
+    //    START + Addr+W + data + ACK + Repeated START + Addr+R + ACK + byte1 + byte2 + STOP
     // ============================================================
     localparam I2C_ADDR  = 7'h28;
     localparam TX_BYTE1  = 8'hA5;
@@ -148,8 +148,8 @@ module i2c_tb();
             // ----- START 检测: 复位位计数, 切换状态 -----
             if (start_seen) begin
                 bit_pos <= 4'd0;
-                if (slave_state == SS_IDLE || slave_state == SS_DATA) begin
-                    // 第一次 START (IDLE→ADDR_W) 或 重复START (DATA→ADDR_R)
+                if (slave_state == SS_IDLE || slave_state == SS_DATA || slave_state == SS_ADDR_R) begin
+                    // 第一次 START (IDLE→ADDR_W) 或 重复START (DATA/ADDR_R)
                     if (slave_state == SS_IDLE) begin
                         slave_state <= SS_ADDR_W;
                         addr_hit    <= 1'b0;
@@ -186,7 +186,12 @@ module i2c_tb();
                     slave_sda_drive <= 1'b0;
                 end else begin
                     // bit_pos == 8: ACK位置 (从设备应答)
-                    if ((slave_state == SS_ADDR_W || slave_state == SS_DATA || slave_state == SS_ADDR_R) && addr_hit) begin
+                    // SS_ADDR_R用recv_shift直接判断(addr_hit在Repeated START前已被清零)
+                    if ((slave_state == SS_ADDR_W || slave_state == SS_DATA) && addr_hit) begin
+                        slave_sda_drive <= 1'b1;
+                        slave_sda_val   <= 1'b0;  // ACK
+                    end else if (slave_state == SS_ADDR_R &&
+                                 recv_shift[7:1] == I2C_ADDR && recv_shift[0] == 1'b1) begin
                         slave_sda_drive <= 1'b1;
                         slave_sda_val   <= 1'b0;  // ACK
                     end else begin
@@ -224,10 +229,11 @@ module i2c_tb();
                             end
                         end
                         SS_DATA: begin
-                            // 数据字节接收完成 → 下一字节是Addr+R
-                            rcvd_data   <= recv_shift;
-                            slave_state <= SS_ADDR_R;
-                            addr_hit    <= 1'b0;  // 重新检查地址
+                            // 数据字节接收完成, 释放SDA, 等待Repeated START+Addr+R
+                            rcvd_data       <= recv_shift;
+                            slave_state     <= SS_ADDR_R;
+                            addr_hit        <= 1'b0;
+                            slave_sda_drive <= 1'b0;
                         end
                         SS_ADDR_R: begin
                             // 地址+R接收完成 (重复START后)
@@ -284,7 +290,7 @@ module i2c_tb();
             if (start_seen) $display("[DEBUG] t=%0d START seen, slave_state=%d -> %s",
                 $time, slave_state,
                 (slave_state==SS_IDLE) ? "SS_ADDR_W" :
-                (slave_state==SS_DATA) ? "SS_ADDR_R" : "no_change");
+                (slave_state==SS_DATA || slave_state==SS_ADDR_R) ? "SS_ADDR_R" : "no_change");
             if (stop_seen) $display("[DEBUG] t=%0d STOP seen, slave_state=%d -> SS_IDLE", $time, slave_state);
             if (scl_fall && (slave_state == SS_TX_BYTE1 || slave_state == SS_TX_BYTE2) && bit_pos < 8)
                 $display("[DEBUG] t=%0d TX bit: state=%s bit_pos=%d sda_val=%b tx_shift=%02x ack=%d drive=%b",
@@ -340,9 +346,9 @@ module i2c_tb();
         begin
             // 先等一段时间让 I2C 开始工作
             repeat (20) @(posedge clk);
-            // 轮询 0x70020000 直到 buzy[17:16] == 10
+            // 轮询 0x70030000 直到 buzy[31:30] == DONE
             forever begin
-                cpu_read(32'h70020000, result);
+                cpu_read(32'h70030000, result);
                 if (result[31:30] == `I2C_DONE) begin
                     // 读取返回的数据, 同时自动清零
                     // 注意: 这次读取已经清零了 buzy 和 rx_data
@@ -385,8 +391,8 @@ module i2c_tb();
 
         // ============================
         // Test 2: 完整I2C收发序列
-        //   写入 0x70030000(data=0xAB) -> 触发:
-        //     START + Addr+W + 0xAB + Addr+R + RX 0xA5 + ACK + RX 0x5A + NACK + STOP
+        //   写入 0x70020000(data=0xAB) -> 触发:
+        //     START + Addr+W + 0xAB + ACK + Repeated START + Addr+R + ACK + RX 0xA5 + MACK + RX 0x5A + NACK + STOP
         //   然后轮询等待 buzy=DONE, 读取 rx_data=0xA55A
         // ============================
         $display("");
@@ -394,12 +400,12 @@ module i2c_tb();
         $display("  Expect slave to return: TX_BYTE1=0x%02X, TX_BYTE2=0x%02X", TX_BYTE1, TX_BYTE2);
 
         // 触发序列
-        cpu_write(32'h70030000, 32'h000000AB);
+        cpu_write(32'h70020000, 32'h000000AB);
 
         // 轮询等待完成, 读取结果 (自动清零)
         poll_i2c_done(readback);
         $display("  Readback: 0x%08X", readback);
-        $display("  Buzy: 0x%X (expected: 0x2 -> DONE, but cleared by read)", readback[17:16]);
+        $display("  Buzy: 0x%X (expected: 0x2 -> DONE, but cleared by read)", readback[31:30]);
         $display("  RX data: 0x%04X (expected: 0x%02X%02X)", readback[15:0], TX_BYTE1, TX_BYTE2);
 
         if (readback[15:0] !== {TX_BYTE1, TX_BYTE2}) begin
@@ -415,11 +421,11 @@ module i2c_tb();
         // ============================
         $display("");
         $display("=== Test 3: Verify clear-on-read ===");
-        cpu_read(32'h70020000, readback);
+        cpu_read(32'h70030000, readback);
         $display("  Readback after clear: 0x%08X", readback);
-        $display("  Buzy: 0x%X (expected: 0x0 -> FREE)", readback[17:16]);
+        $display("  Buzy: 0x%X (expected: 0x0 -> FREE)", readback[31:30]);
 
-        if (readback[17:16] !== `I2C_FREE) begin
+        if (readback[31:30] !== `I2C_FREE) begin
             $display("  *** FAIL: buzy should be FREE after clear! ***");
             error_cnt = error_cnt + 1;
         end else if (readback[15:0] !== 16'd0) begin
@@ -435,7 +441,7 @@ module i2c_tb();
         $display("");
         $display("=== Test 4: Second transaction (data=0x77) ===");
 
-        cpu_write(32'h70030000, 32'h00000077);
+        cpu_write(32'h70020000, 32'h00000077);
 
         poll_i2c_done(readback);
         $display("  Readback: 0x%08X (expected data: 0x%04X)",
@@ -455,11 +461,11 @@ module i2c_tb();
         $display("=== Test 5: Trigger while idle, verify buzy polling ===");
 
         // 先确保空闲
-        cpu_read(32'h70020000, readback);
-        $display("  Initial buzy: 0x%X (expected: 0x0)", readback[17:16]);
+        cpu_read(32'h70030000, readback);
+        $display("  Initial buzy: 0x%X (expected: 0x0)", readback[31:30]);
 
         // 触发
-        cpu_write(32'h70030000, 32'h00000042);
+        cpu_write(32'h70020000, 32'h00000042);
 
         // 轮询直到buzy变成DONE
         poll_i2c_done(readback);

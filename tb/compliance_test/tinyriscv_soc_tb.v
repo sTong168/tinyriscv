@@ -6,7 +6,7 @@
 //`define TEST_PROG  1
 //`define TEST_JTAG  1
 //`define TEST_I2C   1
-`define TEST_UART_DEBUG 1
+//`define TEST_UART_DEBUG 1
 
 `ifdef TEST_I2C
     // I2C test data bytes sent by slave
@@ -766,7 +766,7 @@ module tinyriscv_soc_tb;
 //       data0[7:0] + MACK + data1[7:0] + MNACK + STOP
 // ============================================================
 
-// --- SDA/SCL同步到系统时钟 ---
+// --- SDA/SCL同步到系统时�? ---
 reg sda_s1, sda_s2;
 reg scl_s1, scl_s2;
 
@@ -777,33 +777,33 @@ always @(posedge clk) begin
     scl_s2 <= scl_s1;
 end
 
-// --- 边沿检测 ---
+// --- 边沿�?�? ---
 wire sda_fall =  sda_s2 && ~sda_s1;
 wire sda_rise = ~sda_s2 &&  sda_s1;
 wire scl_rise = ~scl_s2 &&  scl_s1;
 wire scl_fall =  scl_s2 && ~scl_s1;
 
-// START condition: SDA下降沿 & SCL高电平
+// START condition: SDA下降�? & SCL高电�?
 wire i2c_start = sda_fall && scl_s1;
-// STOP  condition: SDA上升沿 & SCL高电平
+// STOP  condition: SDA上升�? & SCL高电�?
 wire i2c_stop  = sda_rise && scl_s1;
 
-// --- 状态编码 ---
+// --- 状�?�编�? ---
 localparam I2C_IDLE = 3'd0;
 localparam I2C_RECV = 3'd1;  // 接收主机数据
 localparam I2C_SACK = 3'd2;  // 从机应答(拉低SDA)
-localparam I2C_SEND = 3'd3;  // 从机发送数据给主机
-localparam I2C_MACK = 3'd4;  // 检测主机应答/非应答
+localparam I2C_SEND = 3'd3;  // 从机发�?�数据给主机
+localparam I2C_MACK = 3'd4;  // �?测主机应�?/非应�?
 
 localparam I2C_TEST_DATA0 = `I2C_TEST_DATA0;
 localparam I2C_TEST_DATA1 = `I2C_TEST_DATA1;
 
 reg [2:0] i2c_state;
-reg [7:0] i2c_sreg;       // 移位寄存器
+reg [7:0] i2c_sreg;       // 移位寄存�?
 reg [3:0] i2c_bcnt;       // 位计数器
-reg [7:0] i2c_txbuf;      // 发送缓冲
-reg       i2c_dir;         // 0=W(写), 1=R(读)
-reg       i2c_phase;       // 0=第一次发送, 1=第二次发送
+reg [7:0] i2c_txbuf;      // 发�?�缓�?
+reg       i2c_dir;         // 0=W(�?), 1=R(�?)
+reg       i2c_phase;       // 0=第一次发�?, 1=第二次发�?
 reg [1:0] i2c_rcnt;        // recv byte counter (0~2 -> 3 frames)
 
 initial begin
@@ -820,12 +820,15 @@ always @(posedge clk or posedge rst) begin
         sda_oe    <= 0;
         sda_o     <= 0;
     end else begin
-        // 任何状态下检测到START/STOP则跳转
+        // 任何状�?�下�?测到START/STOP则跳�?
         if (i2c_start) begin
+            // 若在I2C_SACK中收到Repeated START, 先完成ACK计数再跳转
+            if (i2c_state == I2C_SACK) begin
+                i2c_rcnt <= i2c_rcnt + 1;
+            end
             i2c_state <= I2C_RECV;
             i2c_bcnt  <= 0;
             i2c_sreg  <= 0;
-            // NOTE: 不在此处复位i2c_rcnt, 以支持重复START
             sda_oe    <= 0;
         end else if (i2c_stop) begin
             i2c_state <= I2C_IDLE;
@@ -842,7 +845,7 @@ always @(posedge clk or posedge rst) begin
                     i2c_rcnt <= 0;
                 end
 
-                // --- 从主机接收字节 ---
+                // --- 从主机接收字�? ---
                 I2C_RECV: begin
                     // SCL上升沿采样SDA
                     if (scl_rise && i2c_bcnt < 8) begin
@@ -864,7 +867,7 @@ always @(posedge clk or posedge rst) begin
                         i2c_bcnt <= 0;
                         i2c_rcnt <= i2c_rcnt + 1;
                         if (i2c_rcnt == 2'd2) begin
-                            // 已收满3帧, 直接驱动第一bit数据(不释放SDA)
+                            // 已收�?3�?, 直接驱动第一bit数据(不释放SDA)
                             i2c_state <= I2C_SEND;
                             i2c_txbuf <= {I2C_TEST_DATA0[6:0], 1'b0};
                             sda_oe <= 1;
@@ -878,9 +881,9 @@ always @(posedge clk or posedge rst) begin
                     end
                 end
 
-                // --- 从机发送数据给主机 ---
+                // --- 从机发�?�数据给主机 ---
                 I2C_SEND: begin
-                    // SCL下降沿驱动数据
+                    // SCL下降沿驱动数�?
                     if (scl_fall && i2c_bcnt < 7) begin
                         sda_oe <= 1;
                         sda_o  <= i2c_txbuf[7];
@@ -888,24 +891,24 @@ always @(posedge clk or posedge rst) begin
                         i2c_bcnt  <= i2c_bcnt + 1;
                     end
                     if (i2c_bcnt == 7 && scl_fall) begin
-                        sda_oe    <= 0;          // 释放SDA给主机应答
+                        sda_oe    <= 0;          // 释放SDA给主机应�?
                         i2c_state <= I2C_MACK;
                     end
                 end
 
-                // --- 检测主机应答/非应答 ---
+                // --- �?测主机应�?/非应�? ---
                 I2C_MACK: begin
                     // SCL上升沿采样SDA
                     if (scl_fall) begin
                         if (sda_s2 == 0) begin
-                            // 主机应答(ACK): 继续发送下一字节
+                            // 主机应答(ACK): 继续发�?�下�?字节
                             i2c_state <= I2C_SEND;
                             i2c_bcnt  <= 0;
                             i2c_txbuf <= {I2C_TEST_DATA1[6:0], 1'b0};
                             sda_o  <= I2C_TEST_DATA1[7];
                             sda_oe <= 1;
                         end else begin
-                            // 主机非应答(NACK): 传输结束
+                            // 主机非应�?(NACK): 传输结束
                             i2c_state <= I2C_IDLE;
                             i2c_bcnt  <= 0;
                             sda_oe <= 0;

@@ -28,7 +28,7 @@ module i2c(
 
     // I2C interface
     inout  wire        scl    ,
-    inout  wire        sda
+    inout  wire        sda    
 
     );
 
@@ -74,6 +74,7 @@ module i2c(
     localparam S_STOP_B     = 5'd15;  // SCL=1, SDA=0
     localparam S_STOP_C     = 5'd16;  // SCL=1, SDA=1 (STOP)
     localparam S_DONE       = 5'd17;
+    localparam S_RSTART     = 5'd18;  // Repeated START prep: SCL=0, SDA释放
 
     reg [4:0] state;
 
@@ -107,6 +108,10 @@ module i2c(
     reg scl_oe;
     reg sda_oe;
     reg sda_sync;
+
+    reg ack_w;  // ACK for Addr+W
+    reg ack_d;  // ACK for Data
+    reg ack_r;  // ACK for Addr+R
 
     assign scl = scl_oe ? scl_o : 1'bz;
     assign sda = sda_oe ? sda_o : 1'bz;
@@ -146,6 +151,9 @@ module i2c(
             sda_sync     <= 1'b1;
             buzy         <= `I2C_FREE;
             seq_phase    <= 3'd0;
+            ack_w        <= 1'b1;
+            ack_d        <= 1'b1;
+            ack_r        <= 1'b1;
         end else begin
             // SDA同步 (用于采样)
             sda_sync <= sda;
@@ -187,6 +195,18 @@ module i2c(
                         end else begin
                             buzy <= buzy;  // 读操作不影响buzy
                         end
+                    end
+                end
+
+                // =================== Repeated START 准备 ===================
+                S_RSTART: begin  // SCL=0, 释放SDA(让从设备释放ACK驱动)
+                    timer  <= timer + 16'd1;
+                    scl_oe <= 1'b1;
+                    sda_oe <= 1'b0;  // 释放SDA, 由上拉电阻拉高
+                    scl_o  <= 1'b0;
+                    if (timer_done) begin
+                        timer <= 16'd0;
+                        state <= S_START_A;
                     end
                 end
 
@@ -276,6 +296,14 @@ module i2c(
                     scl_oe <= 1'b1;
                     sda_oe <= 1'b0;
                     scl_o  <= 1'b1;
+                    // 在SCL高电平中点采样从机ACK (0=ACK, 1=NACK)
+                    if (timer == (SCL_DIV >> 1)) begin
+                        case (seq_phase)
+                            3'd0: ack_w <= sda_sync;
+                            3'd1: ack_d <= sda_sync;
+                            3'd2: ack_r <= sda_sync;
+                        endcase
+                    end
                     if (timer_done) begin
                         timer <= 16'd0;
                         // 根据序列阶段决定下一步
@@ -286,11 +314,11 @@ module i2c(
                                 bit_cnt   <= 4'd0;
                                 state     <= S_TX_L;
                             end
-                            3'd1: begin  // 数据发送完成 -> 发送Addr+R (无重复START)
+                            3'd1: begin  // 数据发送完成 -> SCL=0释放总线 -> Repeated START -> Addr+R
                                 seq_phase <= 3'd2;
                                 shift_reg <= {dev_addr_reg[7:1], 1'b1}; // Addr+R
                                 bit_cnt   <= 4'd0;
-                                state     <= S_TX_L;
+                                state     <= S_RSTART;
                             end
                             3'd2: begin  // Addr+R完成 -> 开始接收byte1
                                 seq_phase <= 3'd3;

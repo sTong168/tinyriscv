@@ -15,20 +15,20 @@ Disassembly of section .init:
   1c:	fe858593          	addi	a1,a1,-24 # 10000000 <__bss_start>
   20:	10000617          	auipc	a2,0x10000
   24:	fe060613          	addi	a2,a2,-32 # 10000000 <__bss_start>
-  28:	00c5fc63          	bgeu	a1,a2,40 <__stack_size+0x30>
+  28:	00c5fc63          	bgeu	a1,a2,40 <__stack_size+0x20>
   2c:	00052283          	lw	t0,0(a0)
   30:	0055a023          	sw	t0,0(a1)
   34:	00450513          	addi	a0,a0,4
   38:	00458593          	addi	a1,a1,4
-  3c:	fec5e8e3          	bltu	a1,a2,2c <__stack_size+0x1c>
+  3c:	fec5e8e3          	bltu	a1,a2,2c <__stack_size+0xc>
   40:	10000517          	auipc	a0,0x10000
   44:	fc050513          	addi	a0,a0,-64 # 10000000 <__bss_start>
   48:	10000597          	auipc	a1,0x10000
   4c:	fb858593          	addi	a1,a1,-72 # 10000000 <__bss_start>
-  50:	00b57863          	bgeu	a0,a1,60 <__stack_size+0x50>
+  50:	00b57863          	bgeu	a0,a1,60 <__stack_size+0x40>
   54:	00052023          	sw	zero,0(a0)
   58:	00450513          	addi	a0,a0,4
-  5c:	feb56ce3          	bltu	a0,a1,54 <__stack_size+0x44>
+  5c:	feb56ce3          	bltu	a0,a1,54 <__stack_size+0x34>
   60:	184000ef          	jal	ra,1e4 <_init>
   64:	124000ef          	jal	ra,188 <main>
   68:	00100d13          	li	s10,1
@@ -126,12 +126,12 @@ Disassembly of section .text:
  1a0:	601007b7          	lui	a5,0x60100
  1a4:	00300713          	li	a4,3
  1a8:	00e7a023          	sw	a4,0(a5) # 60100000 <__global_pointer$+0x500ff800>
- 1ac:	600207b7          	lui	a5,0x60020
- 1b0:	10000713          	li	a4,256
- 1b4:	00e7a023          	sw	a4,0(a5) # 60020000 <__global_pointer$+0x5001f800>
- 1b8:	601207b7          	lui	a5,0x60120
- 1bc:	08000713          	li	a4,128
- 1c0:	00e7a023          	sw	a4,0(a5) # 60120000 <__global_pointer$+0x5011f800>
+ 1ac:	600107b7          	lui	a5,0x60010
+ 1b0:	00001737          	lui	a4,0x1
+ 1b4:	00e7a023          	sw	a4,0(a5) # 60010000 <__global_pointer$+0x5000f800>
+ 1b8:	601107b7          	lui	a5,0x60110
+ 1bc:	10000713          	li	a4,256
+ 1c0:	00e7a023          	sw	a4,0(a5) # 60110000 <__global_pointer$+0x5010f800>
  1c4:	600407b7          	lui	a5,0x60040
  1c8:	00f00713          	li	a4,15
  1cc:	00e7a023          	sw	a4,0(a5) # 60040000 <__global_pointer$+0x5003f800>
@@ -173,7 +173,7 @@ Disassembly of section .text:
 
 Disassembly of section .stack:
 
-10000030 <__freertos_irq_stack_top-0x10>:
+10000020 <__freertos_irq_stack_top-0x20>:
 	...
 
 Disassembly of section .comment:
