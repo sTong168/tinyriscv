@@ -7,7 +7,7 @@ module tinyriscv_bridge_soc_top(
     input wire rst,
 
     // output wire over,         // 测试是否完成信号
-    // output wire succ,         // 测试是否成功信号
+    output wire succ,         // 测试是否成功信号
 
     // output wire halted_ind,   // jtag是否已经halt住CPU信号
 
@@ -21,10 +21,10 @@ module tinyriscv_bridge_soc_top(
     // input wire jtag_TDI,      // JTAG TDI引脚
     // output wire jtag_TDO,     // JTAG TDO引脚
 
-    output wire [1:0] pwm    // PWM 输出引脚
+    output wire [2:0] pwm,    // PWM 输出引脚
 
-    // inout wire scl,           // I2C SCL
-    // inout wire sda            // I2C SDA
+    inout wire scl,           // I2C SCL
+    inout wire sda            // I2C SDA
 
 );
 
@@ -42,18 +42,21 @@ module tinyriscv_bridge_soc_top(
 
     // over 和 halted_ind 内部信号
     wire over;
-    wire succ;
+    // wire succ;
     wire halted_ind;
 
     wire [3:0] pwm_wire;
-    // assign pwm = pwm_wire[1:0]; // 目前只使用前两个PWM引脚
+    assign pwm = pwm_wire[2:0]; // 目前只使用前两个PWM引脚
 
-    wire ack0 = u_tinyriscv_soc_top.i2c_0.ack_w;
-    wire ack1 = u_tinyriscv_soc_top.i2c_0.ack_d;
-    wire ack2 = u_tinyriscv_soc_top.i2c_0.ack_r; 
+    // wire ack0 = u_tinyriscv_soc_top.i2c_0.ack_w;
+    // wire ack1 = u_tinyriscv_soc_top.i2c_0.ack_d;
+    // wire ack2 = u_tinyriscv_soc_top.i2c_0.ack_r; 
 
-    assign pwm[0] = ack2; //LED4
-    assign pwm[1] = ack1; //LED3
+
+    // assign pwm[0] = u_tinyriscv_soc_top.i2c_0.flag1; //LED1
+    // assign pwm[1] = u_tinyriscv_soc_top.i2c_0.flag2; //LED2
+    // assign pwm[2] = u_tinyriscv_soc_top.i2c_0.flag3; //LED3
+    // assign pwm[3] = u_tinyriscv_soc_top.i2c_0.flag4; //LED4
 
     // tinyriscv soc顶层模块例化
     tinyriscv_soc_top u_tinyriscv_soc_top(

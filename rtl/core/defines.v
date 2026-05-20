@@ -163,7 +163,7 @@
 // I2C read base address
 `define I2C_READ_ADDR 32'h70030000
 
-// Student ID digits (ASCII) — 学号: 2025210875
+// Student ID digits (ASCII) �? 学号: 2025210875
 `define ASCII_0  8'h32  // '2'
 `define ASCII_1  8'h30  // '0'
 `define ASCII_2  8'h32  // '2'
