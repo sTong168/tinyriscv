@@ -1,4 +1,4 @@
- /*                                                                      
+﻿ /*                                                                      
  Copyright 2020 Blue Liang, liangkangnan@163.com
                                                                          
  Licensed under the Apache License, Version 2.0 (the "License");         
@@ -16,42 +16,34 @@
 
 `include "defines.v"
 
-// 将译码结果向执行模块传递
+// 灏嗚瘧鐮佺粨鏋滃悜鎵ц妯″潡浼犻€?
 module id_ex(
 
     input wire clk,
     input wire rst,
 
-    input wire[`InstBus] inst_i,            // 指令内容
-    input wire[`InstAddrBus] inst_addr_i,   // 指令地址
-    input wire reg_we_i,                    // 写通用寄存器标志
-    input wire[`RegAddrBus] reg_waddr_i,    // 写通用寄存器地址
-    input wire[`RegBus] reg1_rdata_i,       // 通用寄存器1读数据
-    input wire[`RegBus] reg2_rdata_i,       // 通用寄存器2读数据
-    input wire csr_we_i,                    // 写CSR寄存器标志
-    input wire[`MemAddrBus] csr_waddr_i,    // 写CSR寄存器地址
-    input wire[`RegBus] csr_rdata_i,        // CSR寄存器读数据
-    input wire[`MemAddrBus] op1_i,
+    input wire[`InstBus] inst_i,            // 鎸囦护鍐呭
+    input wire[`InstAddrBus] inst_addr_i,   // 鎸囦护鍦板潃
+    input wire reg_we_i,                    // 鍐欓€氱敤瀵勫瓨鍣ㄦ爣蹇?
+    input wire[`RegAddrBus] reg_waddr_i,    // 鍐欓€氱敤瀵勫瓨鍣ㄥ湴鍧€
+    input wire[`RegBus] reg1_rdata_i,       // 閫氱敤瀵勫瓨鍣?璇绘暟鎹?
+    input wire[`RegBus] reg2_rdata_i,       // 閫氱敤瀵勫瓨鍣?璇绘暟鎹?    input wire[`MemAddrBus] op1_i,
     input wire[`MemAddrBus] op2_i,
     input wire[`MemAddrBus] op1_jump_i,
     input wire[`MemAddrBus] op2_jump_i,
 
-    input wire[`Hold_Flag_Bus] hold_flag_i, // 流水线暂停标志
+    input wire[`Hold_Flag_Bus] hold_flag_i, // 娴佹按绾挎殏鍋滄爣蹇?
 
     output wire[`MemAddrBus] op1_o,
     output wire[`MemAddrBus] op2_o,
     output wire[`MemAddrBus] op1_jump_o,
     output wire[`MemAddrBus] op2_jump_o,
-    output wire[`InstBus] inst_o,            // 指令内容
-    output wire[`InstAddrBus] inst_addr_o,   // 指令地址
-    output wire reg_we_o,                    // 写通用寄存器标志
-    output wire[`RegAddrBus] reg_waddr_o,    // 写通用寄存器地址
-    output wire[`RegBus] reg1_rdata_o,       // 通用寄存器1读数据
-    output wire[`RegBus] reg2_rdata_o,       // 通用寄存器2读数据
-    output wire csr_we_o,                    // 写CSR寄存器标志
-    output wire[`MemAddrBus] csr_waddr_o,    // 写CSR寄存器地址
-    output wire[`RegBus] csr_rdata_o         // CSR寄存器读数据
-
+    output wire[`InstBus] inst_o,            // 鎸囦护鍐呭
+    output wire[`InstAddrBus] inst_addr_o,   // 鎸囦护鍦板潃
+    output wire reg_we_o,                    // 鍐欓€氱敤瀵勫瓨鍣ㄦ爣蹇?
+    output wire[`RegAddrBus] reg_waddr_o,    // 鍐欓€氱敤瀵勫瓨鍣ㄥ湴鍧€
+    output wire[`RegBus] reg1_rdata_o,       // 閫氱敤瀵勫瓨鍣?璇绘暟鎹?
+    output wire[`RegBus] reg2_rdata_o,       // 閫氱敤瀵勫瓨鍣?璇绘暟鎹?
     );
 
     wire clear_en = (hold_flag_i == `Hold_Id_clr || hold_flag_i == `Hold_If_keep_Id_clr);
@@ -79,21 +71,7 @@ module id_ex(
 
     wire[`RegBus] reg2_rdata;
     gen_pipe_dff #(32) reg2_rdata_ff(clk, rst, clear_en, hold_en, `ZeroWord, reg2_rdata_i, reg2_rdata);
-    assign reg2_rdata_o = reg2_rdata;
-
-    wire csr_we;
-    gen_pipe_dff #(1) csr_we_ff(clk, rst, clear_en, hold_en, `WriteDisable, csr_we_i, csr_we);
-    assign csr_we_o = csr_we;
-
-    wire[`MemAddrBus] csr_waddr;
-    gen_pipe_dff #(32) csr_waddr_ff(clk, rst, clear_en, hold_en, `ZeroWord, csr_waddr_i, csr_waddr);
-    assign csr_waddr_o = csr_waddr;
-
-    wire[`RegBus] csr_rdata;
-    gen_pipe_dff #(32) csr_rdata_ff(clk, rst, clear_en, hold_en, `ZeroWord, csr_rdata_i, csr_rdata);
-    assign csr_rdata_o = csr_rdata;
-
-    wire[`MemAddrBus] op1;
+    assign reg2_rdata_o = reg2_rdata;    wire[`MemAddrBus] op1;
     gen_pipe_dff #(32) op1_ff(clk, rst, clear_en, hold_en, `ZeroWord, op1_i, op1);
     assign op1_o = op1;
 
@@ -110,3 +88,5 @@ module id_ex(
     assign op2_jump_o = op2_jump;
 
 endmodule
+
+
