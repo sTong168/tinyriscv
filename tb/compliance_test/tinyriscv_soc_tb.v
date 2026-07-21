@@ -5,9 +5,9 @@
 
 //`define TEST_PROG  1
 //`define TEST_JTAG  1
-//`define TEST_I2C   1
+`define TEST_I2C   1
 //`define TEST_UART_DEBUG 1
-`define TEST_I2C_V2   1
+//`define TEST_I2C_V2   1
 
 `ifdef TEST_I2C
     `ifndef I2C_TEST_DATA0
@@ -684,11 +684,11 @@ module tinyriscv_soc_tb;
     end
 
     // sim timeout
-//   initial begin
-//       #500000
-//       $display("Time Out.");
-//       $finish;
-//   end
+  initial begin
+      #5000000
+      $display("Time Out.");
+      $finish;
+  end
 
     // read mem data
 `ifndef TEST_UART_DEBUG
