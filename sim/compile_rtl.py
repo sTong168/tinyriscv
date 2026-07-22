@@ -11,13 +11,15 @@ def main():
 
     if rtl_dir != r'..':
         tb_file = r'/tb/compliance_test/tinyriscv_soc_tb.v'
+        top_module = r'tinyriscv_soc_tb'
     else:
-        tb_file = r'/tb/tinyriscv_soc_tb.v'
+        tb_file = r'/tb/isa/tinyriscv_isa_tb.v'
+        top_module = r'tinyriscv_isa_tb'
 
     # iverilog 程序
     iverilog_cmd = ['iverilog']
     # 顶层模块
-    # iverilog_cmd += ['-s', r'tinyriscv_soc_tb']
+    iverilog_cmd += ['-s', top_module]
     # 编译生成文件
     iverilog_cmd += ['-o', r'out.vvp']
     # 头文件 (defines.v) 路径
@@ -51,10 +53,10 @@ def main():
     iverilog_cmd.append(rtl_dir + r'/rtl/perips/spi.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/perips/i2c.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/perips/pwm.v')
-    # ../rtl/core
-    iverilog_cmd.append(rtl_dir + r'/rtl/core/uart_send.v')
-    iverilog_cmd.append(rtl_dir + r'/rtl/core/i2c_send.v')
+    # ../rtl/core custom instruction controllers
     iverilog_cmd.append(rtl_dir + r'/rtl/core/inst_if_ctrl.v')
+    iverilog_cmd.append(rtl_dir + r'/rtl/core/inst_rt_ctrl.v')
+    iverilog_cmd.append(rtl_dir + r'/rtl/core/inst_sid_ctrl.v')
     # ../rtl/debug
     iverilog_cmd.append(rtl_dir + r'/rtl/debug/jtag_dm.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/debug/jtag_driver.v')

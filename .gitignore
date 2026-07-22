@@ -1,6 +1,10 @@
 # Object files
 /tools
 /.claude
+/.agents
 *.o
 *.ko
 *.obj
+*.docx
+*.pdf
+skills-lock.json
