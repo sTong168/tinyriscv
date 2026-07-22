@@ -27,7 +27,8 @@ module id_ex(
     input wire reg_we_i,                    // 鍐欓€氱敤瀵勫瓨鍣ㄦ爣蹇?
     input wire[`RegAddrBus] reg_waddr_i,    // 鍐欓€氱敤瀵勫瓨鍣ㄥ湴鍧€
     input wire[`RegBus] reg1_rdata_i,       // 閫氱敤瀵勫瓨鍣?璇绘暟鎹?
-    input wire[`RegBus] reg2_rdata_i,       // 閫氱敤瀵勫瓨鍣?璇绘暟鎹?    input wire[`MemAddrBus] op1_i,
+    input wire[`RegBus] reg2_rdata_i,       // 閫氱敤瀵勫瓨鍣?璇绘暟鎹?
+    input wire[`MemAddrBus] op1_i,
     input wire[`MemAddrBus] op2_i,
     input wire[`MemAddrBus] op1_jump_i,
     input wire[`MemAddrBus] op2_jump_i,
@@ -43,7 +44,7 @@ module id_ex(
     output wire reg_we_o,                    // 鍐欓€氱敤瀵勫瓨鍣ㄦ爣蹇?
     output wire[`RegAddrBus] reg_waddr_o,    // 鍐欓€氱敤瀵勫瓨鍣ㄥ湴鍧€
     output wire[`RegBus] reg1_rdata_o,       // 閫氱敤瀵勫瓨鍣?璇绘暟鎹?
-    output wire[`RegBus] reg2_rdata_o,       // 閫氱敤瀵勫瓨鍣?璇绘暟鎹?
+    output wire[`RegBus] reg2_rdata_o       // 閫氱敤瀵勫瓨鍣?璇绘暟鎹?
     );
 
     wire clear_en = (hold_flag_i == `Hold_Id_clr || hold_flag_i == `Hold_If_keep_Id_clr);
@@ -71,7 +72,9 @@ module id_ex(
 
     wire[`RegBus] reg2_rdata;
     gen_pipe_dff #(32) reg2_rdata_ff(clk, rst, clear_en, hold_en, `ZeroWord, reg2_rdata_i, reg2_rdata);
-    assign reg2_rdata_o = reg2_rdata;    wire[`MemAddrBus] op1;
+    assign reg2_rdata_o = reg2_rdata;
+    
+    wire[`MemAddrBus] op1;
     gen_pipe_dff #(32) op1_ff(clk, rst, clear_en, hold_en, `ZeroWord, op1_i, op1);
     assign op1_o = op1;
 

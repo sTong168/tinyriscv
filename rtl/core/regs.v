@@ -37,7 +37,7 @@ module regs(
     input wire[`RegAddrBus] raddr2_i,     // 读寄存器2地址
 
     // to id
-    output reg[`RegBus] rdata2_o,         // 读寄存器2数据
+    output reg[`RegBus] rdata2_o         // 读寄存器2数据
 
     );
 
@@ -49,7 +49,6 @@ module regs(
             // 优先ex模块写操作
             if ((we_i == `WriteEnable) && (waddr_i != `ZeroReg)) begin
                 regs[waddr_i] <= wdata_i;
-        end
             end
         end
     end
