@@ -55,7 +55,7 @@ module tinyriscv_soc_tb;
 
     wire over;
     wire succ;
-    wire halted_ind;
+    // wire halted_ind;
 
     wire[`RegBus] x3 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[3];
     wire[`RegBus] x26 = tinyriscv_soc_top_0.u_tinyriscv.u_regs.regs[26];
@@ -746,7 +746,7 @@ module tinyriscv_soc_tb;
         .rst(rst),
         .over(over),
         .succ(succ),
-        .halted_ind(halted_ind),
+        // .halted_ind(halted_ind),
         .uart_debug_pin(uart_debug_pin),
         .uart_tx_pin(uart_tx_pin),
         .uart_rx_pin(uart_rx_pin),

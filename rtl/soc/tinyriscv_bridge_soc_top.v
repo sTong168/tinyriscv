@@ -6,17 +6,17 @@ module tinyriscv_bridge_soc_top(
     input wire clk,
     input wire rst,
 
-    output wire succ,         // 测试是否成功信号
+    // output wire succ,         // 测试是否成功信号
 
     input wire uart_debug_pin, // 串口下载使能引脚
 
     output wire uart_tx_pin,  // UART发送引脚
     input wire uart_rx_pin,   // UART接收引脚
 
-    output wire [2:0] pwm,    // PWM 输出引脚
+    output wire pwm    // PWM 输出引脚
 
-    inout wire scl,           // I2C SCL
-    inout wire sda            // I2C SDA
+    // inout wire scl,           // I2C SCL
+    // inout wire sda            // I2C SDA
 
 );
 
@@ -24,7 +24,7 @@ module tinyriscv_bridge_soc_top(
     wire [`BridgeBus] bridge;
 
     wire [3:0] pwm_wire;
-    assign pwm = pwm_wire[2:0];
+    assign pwm = pwm_wire[0];
 
     // tinyriscv soc顶层模块例化
     tinyriscv_soc_top u_tinyriscv_soc_top(

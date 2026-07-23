@@ -1,4 +1,4 @@
-﻿ /*                                                                      
+ /*                                                                      
  Copyright 2020 Blue Liang, liangkangnan@163.com
                                                                          
  Licensed under the Apache License, Version 2.0 (the "License");         

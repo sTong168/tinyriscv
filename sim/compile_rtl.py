@@ -22,8 +22,6 @@ def main():
     iverilog_cmd += ['-I', rtl_dir + r'/rtl/core']
     # 宏定义，仿真输出文件
     iverilog_cmd += ['-D', r'OUTPUT="signature.output"']
-    # testbench 文件
-    iverilog_cmd.append(rtl_dir + tb_file)
     # ../rtl/core
     iverilog_cmd.append(rtl_dir + r'/rtl/core/ctrl.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/core/defines.v')
@@ -54,6 +52,8 @@ def main():
     # ../rtl/utils
     iverilog_cmd.append(rtl_dir + r'/rtl/utils/gen_buf.v')
     iverilog_cmd.append(rtl_dir + r'/rtl/utils/gen_dff.v')
+    # testbench 文件（放在最后）
+    iverilog_cmd.append(rtl_dir + tb_file)
 
     # 编译
     process = subprocess.Popen(iverilog_cmd)

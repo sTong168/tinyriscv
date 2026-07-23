@@ -505,23 +505,24 @@ module tinyriscv_soc_tb;
     // generate wave file, used by gtkwave
     initial begin
         $dumpfile("tinyriscv_soc_tb.vcd");
-        $dumpvars(0, tinyriscv_soc_tb);
+        $dumpvars(2, tinyriscv_soc_tb);
         forever #100 $display("Time %t: still running...", $time);
     end
+
+    wire uart_tx_pin;
+    wire uart_rx_pin = 1'b0;
+    wire scl, sda;
 
     tinyriscv_soc_top tinyriscv_soc_top_0(
         .clk(clk),
         .rst(rst),
         .uart_debug_pin(1'b0),
+        .uart_tx_pin(uart_tx_pin),
+        .uart_rx_pin(uart_rx_pin),
         .bridge(bridge),
-        .pwm(pwm)
-`ifdef TEST_JTAG
-        ,
-        .jtag_TCK(TCK),
-        .jtag_TMS(TMS),
-        .jtag_TDI(TDI),
-        .jtag_TDO(TDO)
-`endif
+        .pwm(pwm),
+        .scl(scl),
+        .sda(sda)
     );
 
     bridge_fpga u_bridge_fpga(
