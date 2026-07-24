@@ -3,7 +3,7 @@
 `include "defines.v"
 
 // select one option only
-`define TEST_PROG  1
+// `define TEST_PROG  1
 //`define TEST_JTAG  1
 
 
@@ -505,7 +505,7 @@ module tinyriscv_soc_tb;
     // generate wave file, used by gtkwave
     initial begin
         $dumpfile("tinyriscv_soc_tb.vcd");
-        $dumpvars(2, tinyriscv_soc_tb);
+        $dumpvars(0, tinyriscv_soc_tb);
         forever #100 $display("Time %t: still running...", $time);
     end
 
