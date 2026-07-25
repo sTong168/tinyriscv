@@ -6,8 +6,8 @@ module tinyriscv_soc_top(
     input wire clk,
     input wire rst,
 
-    output reg over,         // 测试是否完成信号
-    output reg succ,         // 测试是否成功信号
+    output wire over,         // 测试是否完成信号
+    output wire succ,         // 测试是否成功信号
 
     input wire uart_debug_pin, // 串口下载使能引脚
 
@@ -108,7 +108,10 @@ module tinyriscv_soc_top(
         .rib_pc_addr_o(m1_addr_i),
         .rib_pc_data_i(m1_data_o),
 
-        .rib_hold_flag_i(rib_hold_flag_o)
+        .rib_hold_flag_i(rib_hold_flag_o),
+
+        .over(over),
+        .succ(succ)
     );
 
     // bridge模块例化
@@ -246,15 +249,5 @@ module tinyriscv_soc_top(
     .data_i(s6_data_o),
     .pwm_o(pwm)
   );
-
-    always @ (posedge clk) begin
-        if (rst == `RstEnable) begin
-            over <= 1'b1;
-            succ <= 1'b1;
-        end else begin
-            over <= ~u_tinyriscv.u_regs.regs[26];
-            succ <= ~u_tinyriscv.u_regs.regs[27];
-        end
-    end
 
 endmodule

@@ -15,7 +15,10 @@ module tinyriscv(
     output wire[`MemAddrBus] rib_pc_addr_o,    // 取指地址
     input wire[`MemBus] rib_pc_data_i,         // 取到的指令内容
 
-    input wire [1:0] rib_hold_flag_i           // 总线暂停标志
+    input wire [1:0] rib_hold_flag_i,          // 总线暂停标志
+
+    output wire over,                        // 测试是否完成信号
+    output wire succ                         // 测试是否成功信号
 
     );
 
@@ -144,6 +147,8 @@ module tinyriscv(
     regs u_regs(
         .clk(clk),
         .rst(rst),
+        .over(over),
+        .succ(succ),
         .we_i(ex_reg_we_o),
         .waddr_i(ex_reg_waddr_o),
         .wdata_i(ex_reg_wdata_o),

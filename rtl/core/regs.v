@@ -22,6 +22,9 @@ module regs(
     input wire clk,
     input wire rst,
 
+    output wire over,         // 测试是否完成信号
+    output wire succ,         // 测试是否成功信号
+
     // from ex
     input wire we_i,                      // 写寄存器标志
     input wire[`RegAddrBus] waddr_i,      // 写寄存器地址
@@ -76,5 +79,8 @@ module regs(
             rdata2_o = regs[raddr2_i];
         end
     end
+
+    assign over = regs[26][0];
+    assign succ = regs[27][0];
 
 endmodule
