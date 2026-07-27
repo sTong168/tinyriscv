@@ -41,7 +41,8 @@ module tinyriscv_top_IO (
     wire [3:0]  pwm_core;
 
     // Bridge (16-bit, split direction/data)
-    wire        bridge_oe;
+    wire        bridge_oe_hi;
+    wire        bridge_oe_lo;
     wire [15:0] bridge_o;
     wire [15:0] bridge_in;
 
@@ -132,23 +133,23 @@ module tinyriscv_top_IO (
     //  bridge_oe=0 → 读模式: PAD高阻, 外部数据进入bridge_in
     // =============================
     // Top: mfpga_mem_out[7:0]  → bridge_o[7:0] / bridge_in[7:0]
-    PDDW0204CDG mfpga_mem_out0 (.PAD(mfpga_mem_out[0]), .I(bridge_o[0]),  .C(bridge_in[0]),  .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_out1 (.PAD(mfpga_mem_out[1]), .I(bridge_o[1]),  .C(bridge_in[1]),  .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_out2 (.PAD(mfpga_mem_out[2]), .I(bridge_o[2]),  .C(bridge_in[2]),  .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_out3 (.PAD(mfpga_mem_out[3]), .I(bridge_o[3]),  .C(bridge_in[3]),  .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_out4 (.PAD(mfpga_mem_out[4]), .I(bridge_o[4]),  .C(bridge_in[4]),  .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_out5 (.PAD(mfpga_mem_out[5]), .I(bridge_o[5]),  .C(bridge_in[5]),  .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_out6 (.PAD(mfpga_mem_out[6]), .I(bridge_o[6]),  .C(bridge_in[6]),  .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_out7 (.PAD(mfpga_mem_out[7]), .I(bridge_o[7]),  .C(bridge_in[7]),  .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_out0 (.PAD(mfpga_mem_out[0]), .I(bridge_o[0]),  .C(bridge_in[0]),  .OEN(~bridge_oe_lo), .IE(~bridge_oe_lo), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_out1 (.PAD(mfpga_mem_out[1]), .I(bridge_o[1]),  .C(bridge_in[1]),  .OEN(~bridge_oe_lo), .IE(~bridge_oe_lo), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_out2 (.PAD(mfpga_mem_out[2]), .I(bridge_o[2]),  .C(bridge_in[2]),  .OEN(~bridge_oe_lo), .IE(~bridge_oe_lo), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_out3 (.PAD(mfpga_mem_out[3]), .I(bridge_o[3]),  .C(bridge_in[3]),  .OEN(~bridge_oe_lo), .IE(~bridge_oe_lo), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_out4 (.PAD(mfpga_mem_out[4]), .I(bridge_o[4]),  .C(bridge_in[4]),  .OEN(~bridge_oe_lo), .IE(~bridge_oe_lo), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_out5 (.PAD(mfpga_mem_out[5]), .I(bridge_o[5]),  .C(bridge_in[5]),  .OEN(~bridge_oe_lo), .IE(~bridge_oe_lo), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_out6 (.PAD(mfpga_mem_out[6]), .I(bridge_o[6]),  .C(bridge_in[6]),  .OEN(~bridge_oe_lo), .IE(~bridge_oe_lo), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_out7 (.PAD(mfpga_mem_out[7]), .I(bridge_o[7]),  .C(bridge_in[7]),  .OEN(~bridge_oe_lo), .IE(~bridge_oe_lo), .DS(1'b1), .PE(1'b0));
     // Bottom: mfpga_mem_in[7:0]  → bridge_o[15:8] / bridge_in[15:8]
-    PDDW0204CDG mfpga_mem_in0  (.PAD(mfpga_mem_in[0]),  .I(bridge_o[8]),  .C(bridge_in[8]),  .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_in1  (.PAD(mfpga_mem_in[1]),  .I(bridge_o[9]),  .C(bridge_in[9]),  .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_in2  (.PAD(mfpga_mem_in[2]),  .I(bridge_o[10]), .C(bridge_in[10]), .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_in3  (.PAD(mfpga_mem_in[3]),  .I(bridge_o[11]), .C(bridge_in[11]), .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_in4  (.PAD(mfpga_mem_in[4]),  .I(bridge_o[12]), .C(bridge_in[12]), .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_in5  (.PAD(mfpga_mem_in[5]),  .I(bridge_o[13]), .C(bridge_in[13]), .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_in6  (.PAD(mfpga_mem_in[6]),  .I(bridge_o[14]), .C(bridge_in[14]), .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
-    PDDW0204CDG mfpga_mem_in7  (.PAD(mfpga_mem_in[7]),  .I(bridge_o[15]), .C(bridge_in[15]), .OEN(~bridge_oe), .IE(~bridge_oe), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_in0  (.PAD(mfpga_mem_in[0]),  .I(bridge_o[8]),  .C(bridge_in[8]),  .OEN(~bridge_oe_hi), .IE(~bridge_oe_hi), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_in1  (.PAD(mfpga_mem_in[1]),  .I(bridge_o[9]),  .C(bridge_in[9]),  .OEN(~bridge_oe_hi), .IE(~bridge_oe_hi), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_in2  (.PAD(mfpga_mem_in[2]),  .I(bridge_o[10]), .C(bridge_in[10]), .OEN(~bridge_oe_hi), .IE(~bridge_oe_hi), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_in3  (.PAD(mfpga_mem_in[3]),  .I(bridge_o[11]), .C(bridge_in[11]), .OEN(~bridge_oe_hi), .IE(~bridge_oe_hi), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_in4  (.PAD(mfpga_mem_in[4]),  .I(bridge_o[12]), .C(bridge_in[12]), .OEN(~bridge_oe_hi), .IE(~bridge_oe_hi), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_in5  (.PAD(mfpga_mem_in[5]),  .I(bridge_o[13]), .C(bridge_in[13]), .OEN(~bridge_oe_hi), .IE(~bridge_oe_hi), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_in6  (.PAD(mfpga_mem_in[6]),  .I(bridge_o[14]), .C(bridge_in[14]), .OEN(~bridge_oe_hi), .IE(~bridge_oe_hi), .DS(1'b1), .PE(1'b0));
+    PDDW0204CDG mfpga_mem_in7  (.PAD(mfpga_mem_in[7]),  .I(bridge_o[15]), .C(bridge_in[15]), .OEN(~bridge_oe_hi), .IE(~bridge_oe_hi), .DS(1'b1), .PE(1'b0));
 
     // =============================
     //  Bidirectional PADs: I2C (open-drain)
@@ -173,26 +174,28 @@ module tinyriscv_top_IO (
     );
 
     // =============================
-    //  Core instantiation
+    //  Core instantiation: 4-CPU top
     // =============================
-    tinyriscv_soc_top u_soc (
-        .clk            (clk_core),
-        .rst            (rst_core),
-        .over           (over_core),
-        .succ           (succ_core),
-        .uart_debug_pin (uart_debug_core),
-        .uart_tx_pin    (uart_tx_core),
-        .uart_rx_pin    (uart_rx_core),
-        .bridge_in      (bridge_in),
-        .bridge_o       (bridge_o),
-        .bridge_oe      (bridge_oe),
-        .pwm            (pwm_core),
-        .scl_in         (scl_in),
-        .scl_o          (scl_o),
-        .scl_oe         (scl_oe),
-        .sda_in         (sda_in),
-        .sda_o          (sda_o),
-        .sda_oe         (sda_oe)
+    tinyriscv_4cpu_top u_soc (
+        .clk              (clk_core),
+        .rst              (rst_core),
+        .chip_sel         (chip_sel_core),
+        .uart_debug_pin  (uart_debug_core),
+        .over             (over_core),
+        .succ             (succ_core),
+        .uart_tx_pin      (uart_tx_core),
+        .uart_rx_pin      (uart_rx_core),
+        .pwm              (pwm_core),
+        .bridge_in        (bridge_in),
+        .bridge_o         (bridge_o),
+        .bridge_oe_hi     (bridge_oe_hi),
+        .bridge_oe_lo     (bridge_oe_lo),
+        .scl_in           (scl_in),
+        .scl_o            (scl_o),
+        .scl_oe           (scl_oe),
+        .sda_in           (sda_in),
+        .sda_o            (sda_o),
+        .sda_oe           (sda_oe)
     );
 
 endmodule
