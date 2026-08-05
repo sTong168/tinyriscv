@@ -80,7 +80,7 @@ module regs(
         end
     end
 
-    assign over = regs[26][0];
-    assign succ = regs[27][0];
+    assign over = ~regs[26][0];
+    assign succ = ~regs[27][0];
 
 endmodule
