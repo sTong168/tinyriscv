@@ -1,0 +1,233 @@
+`include "../core/defines.v"
+
+// SoC top — backend / tape-out port list (group unified interface)
+module cpu1_tinyriscv_soc_top #(
+    parameter MEM_BYPASS = 0
+)(
+    input  wire       clk,
+    input  wire       rst,
+
+    output wire       over,
+    output wire       succ,
+
+    input  wire       uart_debug_pin,
+    output wire       uart_tx_pin,
+    input  wire       uart_rx_pin,
+
+    output wire [7:0] bridge_o,
+    input  wire [7:0] bridge_i,
+
+    output wire [3:0] pwm,
+
+    input  wire       scl_in,
+    output wire       scl_o,
+    output wire       scl_oe,
+    input  wire       sda_in,
+    output wire       sda_o,
+    output wire       sda_oe
+);
+
+    wire [`MemAddrBus] m0_addr_i, m1_addr_i, m2_addr_i, m3_addr_i;
+    wire [`MemBus]     m0_data_i, m1_data_i, m2_data_i, m3_data_i;
+    wire [`MemBus]     m0_data_o, m1_data_o, m2_data_o, m3_data_o;
+    wire               m0_req_i, m1_req_i, m2_req_i, m3_req_i;
+    wire               m0_we_i, m1_we_i, m2_we_i, m3_we_i;
+
+    wire [`MemAddrBus] s0_addr_o, s1_addr_o, s2_addr_o, s3_addr_o;
+    wire [`MemAddrBus] s6_addr_o, s7_addr_o;
+    wire [`MemBus]     s0_data_o, s1_data_o, s2_data_o, s3_data_o;
+    wire [`MemBus]     s6_data_o, s7_data_o;
+    wire [`MemBus]     s0_data_i, s1_data_i, s2_data_i, s3_data_i;
+    wire [`MemBus]     s6_data_i, s7_data_i;
+    wire               s0_we_o, s1_we_o, s2_we_o, s3_we_o;
+    wire               s6_we_o, s7_we_o;
+
+    wire [`MemAddrBus] ext_rom_addr, ext_ram_addr;
+    wire               ext_rom_we, ext_ram_we;
+    wire [`MemBus]     ext_rom_wdata, ext_ram_wdata;
+    wire [`MemBus]     ext_rom_rdata, ext_ram_rdata;
+
+    wire rib_hold_rib, rib_hold_cpu;
+    wire mem_hold_flag, rom_wr_ack;
+    wire custom_start;
+    wire [2:0]  custom_funct3;
+    wire [31:0] custom_rs1, custom_rs2;
+    wire [11:0] custom_imm;
+    wire [`RegAddrBus] custom_rd_waddr, custom_rd_waddr_stored;
+    wire custom_busy, custom_done;
+    wire [31:0] custom_result;
+    wire uart_main_tx, custom_uart_tx, custom_uart_busy;
+
+    wire bus_scl_o, bus_sda_o, bus_sda_oe;
+    wire cust_scl_o, cust_sda_o, cust_sda_oe;
+    wire mmio_scl_o, mmio_sda_o, mmio_sda_oe;
+
+    assign uart_tx_pin = custom_uart_busy ? custom_uart_tx : uart_main_tx;
+
+    // Open-drain merge: drive low or release (oe=0)
+    wire scl_drive_low = (cust_scl_o == 1'b0) | (mmio_scl_o == 1'b0);
+    wire sda_drive_low = (cust_sda_oe & ~cust_sda_o) | (mmio_sda_oe & ~mmio_sda_o);
+
+    assign scl_o  = scl_drive_low ? 1'b0 : 1'b1;
+    assign scl_oe = scl_drive_low;
+    assign sda_o  = sda_drive_low ? 1'b0 : 1'b1;
+    assign sda_oe = sda_drive_low;
+
+  // unused pad readbacks (hook up in chip top)
+  wire _unused_scl_in = scl_in;
+  wire _unused_sda_in = sda_in;
+
+    cpu1_ext_mem_port #(
+        .MEM_BYPASS(MEM_BYPASS)
+    ) u_ext_mem(
+        .clk(clk),
+        .rst(rst),
+        .s0_addr_i(s0_addr_o),
+        .s0_we_i(s0_we_o),
+        .s0_wdata_i(s0_data_o),
+        .s0_rdata_o(s0_data_i),
+        .s1_addr_i(s1_addr_o),
+        .s1_we_i(s1_we_o),
+        .s1_wdata_i(s1_data_o),
+        .s1_rdata_o(s1_data_i),
+        .m0_req_i(m0_req_i),
+        .m0_we_i(m0_we_i),
+        .m0_addr_i(m0_addr_i),
+        .ifetch_req_i(`RIB_REQ),
+        .ifetch_addr_i(m1_addr_i),
+        .ext_rom_addr_o(ext_rom_addr),
+        .ext_rom_we_o(ext_rom_we),
+        .ext_rom_wdata_o(ext_rom_wdata),
+        .ext_rom_rdata_i(ext_rom_rdata),
+        .ext_ram_addr_o(ext_ram_addr),
+        .ext_ram_we_o(ext_ram_we),
+        .ext_ram_wdata_o(ext_ram_wdata),
+        .ext_ram_rdata_i(ext_ram_rdata),
+        .bridge_o(bridge_o),
+        .bridge_i(bridge_i),
+        .rom_wr_ack_o(rom_wr_ack),
+        .mem_hold_o(mem_hold_flag)
+    );
+
+    cpu1_tinyriscv u_tinyriscv(
+        .clk(clk),
+        .rst(rst),
+        .rib_ex_addr_o(m0_addr_i),
+        .rib_ex_data_i(m0_data_o),
+        .rib_ex_data_o(m0_data_i),
+        .rib_ex_req_o(m0_req_i),
+        .rib_ex_we_o(m0_we_i),
+        .rib_pc_addr_o(m1_addr_i),
+        .rib_pc_data_i(m1_data_o),
+        .rib_hold_flag_i(rib_hold_cpu),
+        .over(over),
+        .succ(succ),
+        .custom_start_o(custom_start),
+        .custom_funct3_o(custom_funct3),
+        .custom_rs1_o(custom_rs1),
+        .custom_rs2_o(custom_rs2),
+        .custom_imm_o(custom_imm),
+        .custom_rd_waddr_o(custom_rd_waddr),
+        .custom_busy_i(custom_busy),
+        .custom_done_i(custom_done),
+        .custom_result_i(custom_result),
+        .custom_rd_waddr_i(custom_rd_waddr_stored)
+    );
+
+    cpu1_uart u_uart(
+        .clk(clk),
+        .rst(rst),
+        .we_i(s3_we_o),
+        .addr_i(s3_addr_o),
+        .data_i(s3_data_o),
+        .data_o(s3_data_i),
+        .tx_pin(uart_main_tx),
+        .rx_pin(uart_rx_pin)
+    );
+
+    cpu1_pwm u_pwm(
+        .clk(clk),
+        .rst(rst),
+        .we_i(s6_we_o),
+        .addr_i(s6_addr_o),
+        .data_i(s6_data_o),
+        .pwm_o(pwm)
+    );
+
+    cpu1_i2c u_i2c(
+        .clk(clk),
+        .rst(rst),
+        .we_i(s7_we_o),
+        .addr_i(s7_addr_o),
+        .data_i(s7_data_o),
+        .data_o(s7_data_i),
+        .scl_o(mmio_scl_o),
+        .sda_o(mmio_sda_o),
+        .sda_oe_o(mmio_sda_oe),
+        .sda_i(sda_in)
+    );
+
+    cpu1_lfsr u_lfsr(
+        .clk(clk),
+        .rst(rst),
+        .addr_i(s2_addr_o),
+        .data_i(s2_data_o),
+        .we_i(s2_we_o),
+        .data_o(s2_data_i)
+    );
+
+    cpu1_custom_inst u_custom(
+        .clk(clk),
+        .rst(rst),
+        .start_i(custom_start),
+        .funct3_i(custom_funct3),
+        .rs1_i(custom_rs1),
+        .rs2_i(custom_rs2),
+        .imm_i(custom_imm),
+        .rd_addr_i(custom_rd_waddr),
+        .rd_addr_o(custom_rd_waddr_stored),
+        .busy_o(custom_busy),
+        .done_o(custom_done),
+        .result_o(custom_result),
+        .uart_tx_o(custom_uart_tx),
+        .uart_busy_o(custom_uart_busy),
+        .i2c_scl_o(cust_scl_o),
+        .i2c_sda_o(cust_sda_o),
+        .i2c_sda_oe_o(cust_sda_oe),
+        .i2c_sda_i(sda_in)
+    );
+
+    cpu1_uart_debug u_uart_debug(
+        .clk(clk),
+        .rst(rst),
+        .debug_en_i(uart_debug_pin),
+        .req_o(m3_req_i),
+        .mem_we_o(m3_we_i),
+        .mem_addr_o(m3_addr_i),
+        .mem_wdata_o(m3_data_i),
+        .mem_rdata_i(m3_data_o),
+        .ack_i(rom_wr_ack)
+    );
+
+    cpu1_rib u_rib(
+        .clk(clk),
+        .rst(rst),
+        .m0_addr_i(m0_addr_i), .m0_data_i(m0_data_i), .m0_data_o(m0_data_o), .m0_req_i(m0_req_i), .m0_we_i(m0_we_i),
+        .m1_addr_i(m1_addr_i), .m1_data_i(`ZeroWord),  .m1_data_o(m1_data_o), .m1_req_i(`RIB_REQ),  .m1_we_i(`WriteDisable),
+        .m2_addr_i(m2_addr_i), .m2_data_i(m2_data_i), .m2_data_o(m2_data_o), .m2_req_i(m2_req_i), .m2_we_i(m2_we_i),
+        .m3_addr_i(m3_addr_i), .m3_data_i(m3_data_i), .m3_data_o(m3_data_o), .m3_req_i(m3_req_i), .m3_we_i(m3_we_i),
+        .s0_addr_o(s0_addr_o), .s0_data_o(s0_data_o), .s0_data_i(s0_data_i), .s0_we_o(s0_we_o),
+        .s1_addr_o(s1_addr_o), .s1_data_o(s1_data_o), .s1_data_i(s1_data_i), .s1_we_o(s1_we_o),
+        .s2_addr_o(s2_addr_o), .s2_data_o(s2_data_o), .s2_data_i(s2_data_i), .s2_we_o(s2_we_o),
+        .s3_addr_o(s3_addr_o), .s3_data_o(s3_data_o), .s3_data_i(s3_data_i), .s3_we_o(s3_we_o),
+        .s4_addr_o(), .s4_data_o(), .s4_data_i(`ZeroWord), .s4_we_o(),
+        .s5_addr_o(), .s5_data_o(), .s5_data_i(`ZeroWord), .s5_we_o(),
+        .s6_addr_o(s6_addr_o), .s6_data_o(s6_data_o), .s6_data_i(s6_data_i), .s6_we_o(s6_we_o),
+        .s7_addr_o(s7_addr_o), .s7_data_o(s7_data_o), .s7_data_i(s7_data_i), .s7_we_o(s7_we_o),
+        .hold_flag_o(rib_hold_rib)
+    );
+
+    assign rib_hold_cpu = rib_hold_rib | mem_hold_flag;
+    assign s6_data_i = 32'h0;
+
+endmodule

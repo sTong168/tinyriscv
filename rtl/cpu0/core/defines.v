@@ -92,7 +92,6 @@
 
 // R and M type inst
 `define INST_TYPE_R_M 7'b0110011
-`define INST_TYPE_R   7'b0110011
 // R type inst
 `define INST_ADD_SUB 3'b000
 `define INST_SLL    3'b001
@@ -160,9 +159,6 @@
 `define INST_SID 3'b000
 `define INST_RT  3'b001
 `define INST_IF  3'b010
-`define INST_SID_FUNCT3 3'b000
-`define INST_RT_FUNCT3  3'b001
-`define INST_IF_FUNCT3  3'b010
 
 // I2C read base address
 `define I2C_READ_ADDR 32'h70030000
@@ -202,104 +198,3 @@
 `define I2C_FREE 2'd0
 `define I2C_BUSY 2'd1
 `define I2C_DONE 2'd2
-/*
-Copyright 2019 Blue Liang, liangkangnan@163.com
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-
-
-
-`define Hold_If   3'b010
-`define Hold_Id   3'b011
-
-// I type inst
-
-// L type inst
-
-// S type inst
-
-// R and M type inst
-// R type inst
-// M type inst
-
-// J type inst
-
-
-
-// J type inst
-
-// CSR inst
-
-// CSR reg addr
-
-
-
-
-// common regs
-
-// Custom instruction (opcode 0101111 = 0x2F, RISC-V custom-1 space)
-`define INST_CUSTOM_SID     3'h0   // sID:      send student ID via UART
-`define INST_CUSTOM_RT      3'h1   // rT:       read LM75 temperature via I2C
-`define INST_CUSTOM_IF      3'h2   // IF:       integrate-and-fire neuron model
-`define INST_CUSTOM_POPCNT  3'h3   // popcount: count set bits in rs1, write to rd
-
-// EMIF-8: 16-wire (8 out + 8 in), in-band handshake (no req/ack pins)
-// Frame: MAGIC(0xA5) -> CMD{6'b0,memsel,we} -> ADDR×4(MSB first) -> DATA×4(MSB first)
-// Reply: ACK(0x5A) [-> RDATA×4 on read]. Shared clock with FPGA; ACK is level-sampled.
-`define EMIF_IDLE           8'h00
-`define EMIF_MAGIC          8'hA5
-`define EMIF_ACK            8'h5A
-`define EMIF_ROM            1'b0
-`define EMIF_RAM            1'b1
-`define EMIF_MAGIC_LOCK     32'hDEAD_BEEF  // write to RAM word 15 to lock ROM
- /*                                                                      
- Copyright 2019 Blue Liang, liangkangnan@163.com
-                                                                         
- Licensed under the Apache License, Version 2.0 (the "License");         
- you may not use this file except in compliance with the License.        
- You may obtain a copy of the License at                                 
-                                                                         
-     http://www.apache.org/licenses/LICENSE-2.0                          
-                                                                         
- Unless required by applicable law or agreed to in writing, software    
- distributed under the License is distributed on an "AS IS" BASIS,       
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and     
- limitations under the License.                                          
- */
-
-
-
-// 新增指令
-`define INST_CUSTOM 7'b0101111
-// funct3
-
-// I type inst
-
-// L type inst
-
-// S type inst
-
-// R and M type inst
-// R type inst
-// J type inst
-
-
-// B type inst
-
-
-
-
-// common regs
