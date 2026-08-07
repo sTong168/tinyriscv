@@ -816,7 +816,7 @@ module cpu2_ex(
                                 reg_wdata = op1_i;
                             end
                         end else begin
-                            reg_wdata = op1_i + op2_i + 1;
+                            reg_wdata = op1_i + op2_i;
                         end
                     end
 
