@@ -59,10 +59,10 @@ module riscv_soc_IO_tb;
     assign mscl = scl_oe ? scl_o : 1'bz;
     assign msda = sda_oe ? sda_o : 1'bz;
 
-    // ---- Internal probe wires ----
-    wire [`RegBus] x3  = tinyriscv_top_IO_0.u_soc.u_cpu0.u_tinyriscv.u_regs.regs[3];
-    wire [`RegBus] x26 = tinyriscv_top_IO_0.u_soc.u_cpu0.u_tinyriscv.u_regs.regs[26];
-    wire [`RegBus] x27 = tinyriscv_top_IO_0.u_soc.u_cpu0.u_tinyriscv.u_regs.regs[27];
+    // ---- Internal probe wires (shared regs) ----
+    wire [`RegBus] x3  = tinyriscv_top_IO_0.u_soc.u_regs.regs[3];
+    wire [`RegBus] x26 = tinyriscv_top_IO_0.u_soc.u_regs.regs[26];
+    wire [`RegBus] x27 = tinyriscv_top_IO_0.u_soc.u_regs.regs[27];
 
     wire [31:0] ex_end_flag    = u_bridge_fpga.u_ram._ram[4];
     wire [31:0] begin_signature = u_bridge_fpga.u_ram._ram[2];
@@ -375,18 +375,18 @@ module riscv_soc_IO_tb;
     end
 
 `ifdef TEST_UART_DEBUG
-    // ---- Debug monitor for uart_debug ----
-    wire [13:0] dbg_state    = tinyriscv_top_IO_0.u_soc.u_cpu0.u_uart_debug.state;
-    wire [7:0]  dbg_need_rec = tinyriscv_top_IO_0.u_soc.u_cpu0.u_uart_debug.need_to_rec_bytes;
-    wire [15:0] dbg_rem_pkt  = tinyriscv_top_IO_0.u_soc.u_cpu0.u_uart_debug.remain_packet_count;
-    wire [7:0]  dbg_byte_idx0= tinyriscv_top_IO_0.u_soc.u_cpu0.u_uart_debug.write_mem_byte_index0;
-    wire [31:0] dbg_wr_addr  = tinyriscv_top_IO_0.u_soc.u_cpu0.u_uart_debug.write_mem_addr;
-    wire [15:0] dbg_crc_res  = tinyriscv_top_IO_0.u_soc.u_cpu0.u_uart_debug.crc_result;
-    wire [7:0]  dbg_rx_crc_h = tinyriscv_top_IO_0.u_soc.u_cpu0.u_uart_debug.rx_data[130];
-    wire [7:0]  dbg_rx_crc_l = tinyriscv_top_IO_0.u_soc.u_cpu0.u_uart_debug.rx_data[129];
-    wire [31:0] dbg_fw_size  = tinyriscv_top_IO_0.u_soc.u_cpu0.u_uart_debug.fw_file_size;
-    wire        dbg_ack      = tinyriscv_top_IO_0.u_soc.u_cpu0.u_uart_debug.ack_i;
-    wire        dbg_we       = tinyriscv_top_IO_0.u_soc.u_cpu0.u_uart_debug.mem_we_o;
+    // ---- Debug monitor for shared uart_debug ----
+    wire [13:0] dbg_state    = tinyriscv_top_IO_0.u_soc.u_uart_debug.state;
+    wire [7:0]  dbg_need_rec = tinyriscv_top_IO_0.u_soc.u_uart_debug.need_to_rec_bytes;
+    wire [15:0] dbg_rem_pkt  = tinyriscv_top_IO_0.u_soc.u_uart_debug.remain_packet_count;
+    wire [7:0]  dbg_byte_idx0= tinyriscv_top_IO_0.u_soc.u_uart_debug.write_mem_byte_index0;
+    wire [31:0] dbg_wr_addr  = tinyriscv_top_IO_0.u_soc.u_uart_debug.write_mem_addr;
+    wire [15:0] dbg_crc_res  = tinyriscv_top_IO_0.u_soc.u_uart_debug.crc_result;
+    wire [7:0]  dbg_rx_crc_h = tinyriscv_top_IO_0.u_soc.u_uart_debug.rx_data[130];
+    wire [7:0]  dbg_rx_crc_l = tinyriscv_top_IO_0.u_soc.u_uart_debug.rx_data[129];
+    wire [31:0] dbg_fw_size  = tinyriscv_top_IO_0.u_soc.u_uart_debug.fw_file_size;
+    wire        dbg_ack      = tinyriscv_top_IO_0.u_soc.u_uart_debug.ack_i;
+    wire        dbg_we       = tinyriscv_top_IO_0.u_soc.u_uart_debug.mem_we_o;
 
     reg [13:0] dbg_state_prev;
     always @(posedge clk) begin

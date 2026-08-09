@@ -25,8 +25,14 @@ module cpu3_tinyriscv(
     output wire send_if_start_o,
     input wire send_if_done_i,
     output wire[7:0] if_data_o,
-    output wire regs_over_o,
-    output wire regs_succ_o
+    // shared regs interface
+    output wire              reg_we_o,
+    output wire[`RegAddrBus] reg_waddr_o,
+    output wire[`RegBus]     reg_wdata_o,
+    output wire[`RegAddrBus] reg_raddr1_o,
+    output wire[`RegAddrBus] reg_raddr2_o,
+    input wire[`RegBus]     reg_rdata1_i,
+    input wire[`RegBus]     reg_rdata2_i
     );
 
     wire[`InstAddrBus] pc_pc_o;
@@ -70,8 +76,6 @@ module cpu3_tinyriscv(
     wire[`Hold_Flag_Bus] ctrl_hold_flag_o;
     wire ctrl_jump_flag_o;
     wire[`InstAddrBus] ctrl_jump_addr_o;
-    wire[`RegBus] regs_rdata1_o;
-    wire[`RegBus] regs_rdata2_o;
 
     reg mem_pending;
     reg pending_we;
@@ -162,6 +166,13 @@ module cpu3_tinyriscv(
                                                 pending_addr[1:0],
                                                 rib_ex_data_i) :
                                     ex_reg_wdata_o;
+
+    // shared regs interface
+    assign reg_we_o = writeback_we;
+    assign reg_waddr_o = writeback_waddr;
+    assign reg_wdata_o = writeback_wdata;
+    assign reg_raddr1_o = id_reg1_raddr_o;
+    assign reg_raddr2_o = id_reg2_raddr_o;
     wire gated_jump_flag = ex_jump_flag_o && !mem_pending && !ex_mem_req_o;
     wire pc_jump_flag = (gated_jump_flag &&
                          (!pc_fetch_pending || rib_pc_done_i)) ||
@@ -233,20 +244,6 @@ module cpu3_tinyriscv(
         .jump_addr_o(ctrl_jump_addr_o)
     );
 
-    cpu3_regs u_regs(
-        .clk(clk),
-        .rst(rst),
-        .we_i(writeback_we),
-        .waddr_i(writeback_waddr),
-        .wdata_i(writeback_wdata),
-        .raddr1_i(id_reg1_raddr_o),
-        .rdata1_o(regs_rdata1_o),
-        .raddr2_i(id_reg2_raddr_o),
-        .rdata2_o(regs_rdata2_o),
-        .over(regs_over_o),
-        .succ(regs_succ_o)
-    );
-
     cpu3_if_id u_if_id(
         .clk(clk),
         .rst(rst),
@@ -261,8 +258,8 @@ module cpu3_tinyriscv(
     cpu3_id u_id(
         .inst_i(if_inst_o),
         .inst_addr_i(if_inst_addr_o),
-        .reg1_rdata_i(regs_rdata1_o),
-        .reg2_rdata_i(regs_rdata2_o),
+        .reg1_rdata_i(reg_rdata1_i),
+        .reg2_rdata_i(reg_rdata2_i),
         .reg1_raddr_o(id_reg1_raddr_o),
         .reg2_raddr_o(id_reg2_raddr_o),
         .inst_o(id_inst_o),

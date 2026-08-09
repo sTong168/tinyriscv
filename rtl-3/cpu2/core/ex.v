@@ -163,7 +163,7 @@ module cpu2_ex(
 
 
     // 处理 sID 指令（轮询 UART_STATUS，再写 UART_TXDATA）
-    always @ (posedge clk) begin
+    always @ (posedge clk or posedge rst) begin
         if (rst == `RstEnable) begin
             sid_byte_index <= 4'd0;
             sid_busy <= 1'b0;
@@ -218,16 +218,6 @@ module cpu2_ex(
     reg rt_seen_busy;
     reg [`RegAddrBus] rt_rd;
 
-    // ========== IF指令相关寄存器 ==========
-    reg if_busy;
-    reg if_done;
-    reg[7:0] if_fire_byte;
-    reg[1:0] if_phase;
-
-    localparam IF_IDLE  = 2'b00;
-    localparam IF_POLL  = 2'b01;
-    localparam IF_WRITE = 2'b10;
-
     // LM75上电延时
     `ifdef SIMULATION
         localparam PWRON_DELAY = 25'd6000;
@@ -236,7 +226,7 @@ module cpu2_ex(
     `endif
     reg [24:0] rt_pwron_cnt;
 
-    always @(posedge clk) begin
+    always @(posedge clk or posedge rst) begin
         if (rst == `RstEnable) begin
             rt_pwron_cnt <= 25'd0;
         end else if (rt_pwron_cnt < PWRON_DELAY) begin
@@ -244,7 +234,7 @@ module cpu2_ex(
         end
     end
 
-    always @(posedge clk) begin
+    always @(posedge clk or posedge rst) begin
         if (rst == `RstEnable) begin
             rt_busy <= 1'b0;
             rt_done <= 1'b0;
@@ -325,39 +315,6 @@ module cpu2_ex(
             endcase
         end else if (rt_done) begin
             rt_done <= 1'b0;
-        end
-    end
-
-    // 处理 IF 指令（轮询UART_STATUS后写UART_TXDATA发送1字节, 同sID方式）
-    // 修复: 原实现单周期直写UART_TX, UART忙时写入被丢弃, 改为busy轮询
-    always @ (posedge clk) begin
-        if (rst == `RstEnable) begin
-            if_busy <= 1'b0;
-            if_done <= 1'b0;
-            if_fire_byte <= 8'h00;
-            if_phase <= IF_IDLE;
-        end else if (if_busy) begin
-            case (if_phase)
-                IF_POLL: begin
-                    if (mem_rdata_i[0] == 1'b0) begin
-                        if_phase <= IF_WRITE;
-                    end
-                end
-                IF_WRITE: begin
-                    if_busy <= 1'b0;
-                    if_phase <= IF_IDLE;
-                end
-                default: if_phase <= IF_IDLE;
-            endcase
-        end else if (opcode == `INST_CUSTOM && funct3 == `INST_IF &&
-                     op1_jump_i == 32'h0 &&
-                     $signed(op1_i) >= $signed(reg2_rdata_i)) begin
-            if_busy <= 1'b1;
-            if_done <= 1'b1;
-            if_fire_byte <= op1_i[7:0];
-            if_phase <= IF_POLL;
-        end else if (opcode == `INST_CUSTOM && funct3 == `INST_IF) begin
-            if_done <= 1'b0;
         end
     end
 
@@ -850,10 +807,10 @@ module cpu2_ex(
                         mem_we = `WriteDisable;
                         if (op1_jump_i == 32'h0) begin
                             if ($signed(op1_i) >= $signed(reg2_rdata_i)) begin
-                                // fire: 发送由if状态机完成(先轮询UART busy再写)
-                                if (if_busy) begin
-                                    hold_flag = `HoldEnable;
-                                end
+                                mem_we = `WriteEnable;
+                                mem_req = `RIB_REQ;
+                                mem_waddr_o = `UART_TX_REG;
+                                mem_wdata_o = {24'h0, op1_i[7:0]};
                                 reg_wdata = `ZeroWord;
                             end else begin
                                 reg_wdata = op1_i;
@@ -965,35 +922,6 @@ module cpu2_ex(
                     default: ;
                 endcase
             end
-        end
-
-        // IF 指令多周期override: 轮询UART_STATUS -> 写UART_TXDATA
-        if (if_busy) begin
-            hold_flag = `HoldEnable;
-            reg_we = `WriteDisable;
-            reg_wdata = `ZeroWord;
-            jump_flag = `JumpDisable;
-            jump_addr = `ZeroWord;
-            mem_req = `RIB_NREQ;
-            mem_we = `WriteDisable;
-            mem_wdata_o = `ZeroWord;
-            mem_waddr_o = `ZeroWord;
-            case (if_phase)
-                IF_POLL: begin
-                    mem_req = `RIB_REQ;
-                    mem_raddr_o = `UART_STATUS_REG;
-                end
-                IF_WRITE: begin
-                    mem_req = `RIB_REQ;
-                    mem_we = `WriteEnable;
-                    mem_waddr_o = `UART_TX_REG;
-                    mem_wdata_o = {24'h0, if_fire_byte};
-                    mem_raddr_o = `ZeroWord;
-                end
-                default: begin
-                    mem_raddr_o = `ZeroWord;
-                end
-            endcase
         end
     end
 

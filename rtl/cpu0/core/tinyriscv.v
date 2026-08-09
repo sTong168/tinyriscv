@@ -17,8 +17,14 @@ module tinyriscv(
 
     input wire [1:0] rib_hold_flag_i,          // 总线暂停标志
 
-    output wire over,                        // 测试是否完成信号
-    output wire succ                         // 测试是否成功信号
+    // shared regs interface
+    output wire              reg_we_o,
+    output wire[`RegAddrBus] reg_waddr_o,
+    output wire[`RegBus]     reg_wdata_o,
+    output wire[`RegAddrBus] reg_raddr1_o,
+    output wire[`RegAddrBus] reg_raddr2_o,
+    input wire[`RegBus]     reg_rdata1_i,
+    input wire[`RegBus]     reg_rdata2_i
 
     );
 
@@ -69,10 +75,6 @@ module tinyriscv(
     wire ex_jump_flag_o;
     wire[`InstAddrBus] ex_jump_addr_o;
 
-    // regs模块输出信号
-    wire[`RegBus] regs_rdata1_o;
-    wire[`RegBus] regs_rdata2_o;
-
     // ctrl模块输出信号
     wire[`Hold_Flag_Bus] ctrl_hold_flag_o;
     wire ctrl_jump_flag_o;
@@ -118,6 +120,13 @@ module tinyriscv(
 
     assign rib_pc_addr_o = pc_pc_o;
 
+    // shared regs interface
+    assign reg_we_o = ex_reg_we_o;
+    assign reg_waddr_o = ex_reg_waddr_o;
+    assign reg_wdata_o = ex_reg_wdata_o;
+    assign reg_raddr1_o = id_reg1_raddr_o;
+    assign reg_raddr2_o = id_reg2_raddr_o;
+
 
     // pc_reg模块例化
     pc_reg u_pc_reg(
@@ -143,20 +152,6 @@ module tinyriscv(
         .jump_addr_o(ctrl_jump_addr_o)
     );
 
-    // regs模块例化
-    regs u_regs(
-        .clk(clk),
-        .rst(rst),
-        .over(over),
-        .succ(succ),
-        .we_i(ex_reg_we_o),
-        .waddr_i(ex_reg_waddr_o),
-        .wdata_i(ex_reg_wdata_o),
-        .raddr1_i(id_reg1_raddr_o),
-        .rdata1_o(regs_rdata1_o),
-        .raddr2_i(id_reg2_raddr_o),
-        .rdata2_o(regs_rdata2_o)
-    );
 
     // if_id模块例化
     if_id u_if_id(
@@ -174,8 +169,8 @@ module tinyriscv(
         .rst(rst),
         .inst_i(if_inst_o),
         .inst_addr_i(if_inst_addr_o),
-        .reg1_rdata_i(regs_rdata1_o),
-        .reg2_rdata_i(regs_rdata2_o),
+        .reg1_rdata_i(reg_rdata1_i),
+        .reg2_rdata_i(reg_rdata2_i),
         .ex_jump_flag_i(ex_jump_flag_o),
         .reg1_raddr_o(id_reg1_raddr_o),
         .reg2_raddr_o(id_reg2_raddr_o),

@@ -4,8 +4,8 @@
 // - chip_sel[1:0] selects active CPU (only selected CPU gets clock)
 // - chip_sel=00: CPU0 gets full bidirectional bridge (16-bit, _in/_o/_oe)
 // - chip_sel!=00: selected CPU gets 8-in/8-out bridge (bridge_i[7:0], bridge_o[7:0])
-// - All output signals (over/succ/uart_tx/pwm/I2C) muxed by chip_sel
-// - uart_debug is muxed by chip_sel, only one PAD pin needed
+// - Shared peripherals: regs, pwm, uart_debug instantiated once, muxed by chip_sel
+// - uart_debug and selected CPU share RIB bus (same as original single-CPU design)
 module tinyriscv_4cpu_top(
 
     // System
@@ -13,7 +13,7 @@ module tinyriscv_4cpu_top(
     input  wire        rst,
     input  wire [1:0]  chip_sel,
 
-    // UART debug enable pin (muxed to selected CPU by chip_sel)
+    // UART debug enable pin (shared uart_debug uses this directly)
     input  wire        uart_debug_pin,
 
     // Muxed output signals (one set, selected by chip_sel)
@@ -37,7 +37,7 @@ module tinyriscv_4cpu_top(
     output wire        sda_o,
     output wire        sda_oe
 
-);
+    );
 
     // ================================================================
     // Chip select one-hot decode
@@ -51,117 +51,245 @@ module tinyriscv_4cpu_top(
     wire bridge_bidi_mode = (chip_sel == 2'b00);
 
     // ================================================================
-    // uart_debug mux: 片选到哪个CPU，哪个CPU收到uart_debug信号
+    // Per-CPU signal declarations (must precede mux logic for VCS)
     // ================================================================
-    wire cpu0_uart_debug;
-    wire cpu1_uart_debug;
-    wire cpu2_uart_debug;
-    wire cpu3_uart_debug;
-    assign cpu0_uart_debug = sel[0] ? uart_debug_pin : 1'b0;
-    assign cpu1_uart_debug = sel[1] ? uart_debug_pin : 1'b0;
-    assign cpu2_uart_debug = sel[2] ? uart_debug_pin : 1'b0;
-    assign cpu3_uart_debug = sel[3] ? uart_debug_pin : 1'b0;
-
-    // ================================================================
-    // Per-CPU signals
-    // ================================================================
-    // Clock gating: only selected CPU receives clock
-    wire cpu0_clk;
-    wire cpu1_clk;
-    wire cpu2_clk;
-    wire cpu3_clk;
+    // Clock gating: only selected CPU receives clock (runs concurrently with uart_debug)
+    wire cpu0_clk, cpu1_clk, cpu2_clk, cpu3_clk;
     assign cpu0_clk = clk & sel[0];
     assign cpu1_clk = clk & sel[1];
     assign cpu2_clk = clk & sel[2];
     assign cpu3_clk = clk & sel[3];
 
     // --- CPU0 signals (full 16-bit bidi bridge: _in/_o/_oe) ---
-    wire        cpu0_over;
-    wire        cpu0_succ;
-    wire        cpu0_uart_tx;
-    wire [3:0]  cpu0_pwm;
     wire [15:0] cpu0_bridge_in;
     wire [15:0] cpu0_bridge_o;
     wire        cpu0_bridge_oe;
-    wire        cpu0_scl_o;
-    wire        cpu0_scl_oe;
-    wire        cpu0_sda_o;
-    wire        cpu0_sda_oe;
+    wire        cpu0_scl_o, cpu0_scl_oe;
+    wire        cpu0_sda_o, cpu0_sda_oe;
+    wire        cpu0_uart_tx;
+    // regs interface
+    wire        cpu0_reg_we;
+    wire [4:0]  cpu0_reg_waddr;
+    wire [31:0] cpu0_reg_wdata;
+    wire [4:0]  cpu0_reg_raddr1;
+    wire [4:0]  cpu0_reg_raddr2;
+    // debug bus
+    wire [31:0] cpu0_dbg_rdata;
+    wire        cpu0_dbg_ack;
+    // pwm bus
+    wire        cpu0_pwm_we;
+    wire [31:0] cpu0_pwm_addr;
+    wire [31:0] cpu0_pwm_data;
 
-    // --- CPU1 signals (8-in/8-out bridge: bridge_i[7:0], bridge_o[7:0], 无bridge_oe) ---
-    wire        cpu1_over;
-    wire        cpu1_succ;
-    wire        cpu1_uart_tx;
-    wire [3:0]  cpu1_pwm;
+    // --- CPU1 signals (8-in/8-out bridge) ---
     wire [7:0]  cpu1_bridge_i;
     wire [7:0]  cpu1_bridge_o;
-    wire        cpu1_scl_o;
-    wire        cpu1_scl_oe;
-    wire        cpu1_sda_o;
-    wire        cpu1_sda_oe;
+    wire        cpu1_scl_o, cpu1_scl_oe;
+    wire        cpu1_sda_o, cpu1_sda_oe;
+    wire        cpu1_uart_tx;
+    wire        cpu1_reg_we;
+    wire [4:0]  cpu1_reg_waddr;
+    wire [31:0] cpu1_reg_wdata;
+    wire [4:0]  cpu1_reg_raddr1;
+    wire [4:0]  cpu1_reg_raddr2;
+    wire [31:0] cpu1_dbg_rdata;
+    wire        cpu1_dbg_ack;
+    wire        cpu1_pwm_we;
+    wire [31:0] cpu1_pwm_addr;
+    wire [31:0] cpu1_pwm_data;
 
-    // --- CPU2 signals (8-in/8-out bridge: bridge_i[7:0], bridge_o[7:0], 无bridge_oe) ---
-    wire        cpu2_over;
-    wire        cpu2_succ;
-    wire        cpu2_uart_tx;
-    wire [3:0]  cpu2_pwm;
+    // --- CPU2 signals (8-in/8-out bridge) ---
     wire [7:0]  cpu2_bridge_i;
     wire [7:0]  cpu2_bridge_o;
-    wire        cpu2_scl_o;
-    wire        cpu2_scl_oe;
-    wire        cpu2_sda_o;
-    wire        cpu2_sda_oe;
+    wire        cpu2_scl_o, cpu2_scl_oe;
+    wire        cpu2_sda_o, cpu2_sda_oe;
+    wire        cpu2_uart_tx;
+    wire        cpu2_reg_we;
+    wire [4:0]  cpu2_reg_waddr;
+    wire [31:0] cpu2_reg_wdata;
+    wire [4:0]  cpu2_reg_raddr1;
+    wire [4:0]  cpu2_reg_raddr2;
+    wire [31:0] cpu2_dbg_rdata;
+    wire        cpu2_dbg_ack;
+    wire        cpu2_pwm_we;
+    wire [31:0] cpu2_pwm_addr;
+    wire [31:0] cpu2_pwm_data;
 
-    // --- CPU3 signals (8-in/8-out bridge: bridge_i[7:0], bridge_o[7:0], 无bridge_oe) ---
-    wire        cpu3_over;
-    wire        cpu3_succ;
-    wire        cpu3_uart_tx;
-    wire [3:0]  cpu3_pwm;
+    // --- CPU3 signals (8-in/8-out bridge) ---
     wire [7:0]  cpu3_bridge_i;
     wire [7:0]  cpu3_bridge_o;
-    wire        cpu3_scl_o;
-    wire        cpu3_scl_oe;
-    wire        cpu3_sda_o;
-    wire        cpu3_sda_oe;
+    wire        cpu3_scl_o, cpu3_scl_oe;
+    wire        cpu3_sda_o, cpu3_sda_oe;
+    wire        cpu3_uart_tx;
+    wire        cpu3_reg_we;
+    wire [4:0]  cpu3_reg_waddr;
+    wire [31:0] cpu3_reg_wdata;
+    wire [4:0]  cpu3_reg_raddr1;
+    wire [4:0]  cpu3_reg_raddr2;
+    wire [31:0] cpu3_dbg_rdata;
+    wire        cpu3_dbg_ack;
+    wire        cpu3_pwm_we;
+    wire [31:0] cpu3_pwm_addr;
+    wire [31:0] cpu3_pwm_data;
+
+    // Debug bus output wires (shared uart_debug → selected CPU)
+    wire        cpu0_dbg_req,   cpu1_dbg_req,   cpu2_dbg_req,   cpu3_dbg_req;
+    wire        cpu0_dbg_we,    cpu1_dbg_we,    cpu2_dbg_we,    cpu3_dbg_we;
+    wire [31:0] cpu0_dbg_addr,  cpu1_dbg_addr,  cpu2_dbg_addr,  cpu3_dbg_addr;
+    wire [31:0] cpu0_dbg_wdata, cpu1_dbg_wdata, cpu2_dbg_wdata, cpu3_dbg_wdata;
+    wire        cpu0_dbg_valid, cpu1_dbg_valid, cpu2_dbg_valid, cpu3_dbg_valid;
+
+    // ================================================================
+    // Shared uart_debug: 2-FF synchronizer + instantiation
+    // ================================================================
+    reg dbg_sync0, dbg_sync1;
+    always @(posedge clk) begin
+        dbg_sync0 <= uart_debug_pin;
+        dbg_sync1 <= dbg_sync0;
+    end
+    wire uart_debug_synced = dbg_sync1;
+
+    wire        dbg_req;
+    wire        dbg_we;
+    wire [31:0] dbg_addr;
+    wire [31:0] dbg_wdata;
+    wire [31:0] dbg_rdata;
+    wire        dbg_ack;
+    wire        dbg_valid;
+
+    shared_uart_debug u_uart_debug(
+        .clk(clk),
+        .rst(rst),
+        .debug_en_i(uart_debug_synced),
+        .req_o(dbg_req),
+        .mem_we_o(dbg_we),
+        .mem_addr_o(dbg_addr),
+        .mem_wdata_o(dbg_wdata),
+        .mem_rdata_i(dbg_rdata),
+        .ack_i(dbg_ack),
+        .mem_valid_o(dbg_valid)
+    );
+
+    // ================================================================
+    // Shared regs: muxed interface from all CPUs
+    // ================================================================
+    wire [4:0]  muxed_reg_waddr;
+    wire [31:0] muxed_reg_wdata;
+    wire        muxed_reg_we;
+    wire [4:0]  muxed_reg_raddr1;
+    wire [4:0]  muxed_reg_raddr2;
+    wire [31:0] shared_reg_rdata1;
+    wire [31:0] shared_reg_rdata2;
+
+    assign muxed_reg_we     = sel[0] ? cpu0_reg_we     : sel[1] ? cpu1_reg_we     :
+                                sel[2] ? cpu2_reg_we     : cpu3_reg_we;
+    assign muxed_reg_waddr  = sel[0] ? cpu0_reg_waddr  : sel[1] ? cpu1_reg_waddr  :
+                                sel[2] ? cpu2_reg_waddr  : cpu3_reg_waddr;
+    assign muxed_reg_wdata  = sel[0] ? cpu0_reg_wdata  : sel[1] ? cpu1_reg_wdata  :
+                                sel[2] ? cpu2_reg_wdata  : cpu3_reg_wdata;
+    assign muxed_reg_raddr1 = sel[0] ? cpu0_reg_raddr1 : sel[1] ? cpu1_reg_raddr1 :
+                                sel[2] ? cpu2_reg_raddr1 : cpu3_reg_raddr1;
+    assign muxed_reg_raddr2 = sel[0] ? cpu0_reg_raddr2 : sel[1] ? cpu1_reg_raddr2 :
+                                sel[2] ? cpu2_reg_raddr2 : cpu3_reg_raddr2;
+
+    shared_regs u_regs(
+        .clk(clk),
+        .rst(rst),
+        .we_i(muxed_reg_we),
+        .waddr_i(muxed_reg_waddr),
+        .wdata_i(muxed_reg_wdata),
+        .raddr1_i(muxed_reg_raddr1),
+        .rdata1_o(shared_reg_rdata1),
+        .raddr2_i(muxed_reg_raddr2),
+        .rdata2_o(shared_reg_rdata2),
+        .over(over),
+        .succ(succ)
+    );
+
+    // Broadcast shared regs read data to all cores
+    wire [31:0] cpu0_rdata1 = shared_reg_rdata1;
+    wire [31:0] cpu0_rdata2 = shared_reg_rdata2;
+    wire [31:0] cpu1_rdata1 = shared_reg_rdata1;
+    wire [31:0] cpu1_rdata2 = shared_reg_rdata2;
+    wire [31:0] cpu2_rdata1 = shared_reg_rdata1;
+    wire [31:0] cpu2_rdata2 = shared_reg_rdata2;
+    wire [31:0] cpu3_rdata1 = shared_reg_rdata1;
+    wire [31:0] cpu3_rdata2 = shared_reg_rdata2;
+
+    // ================================================================
+    // Shared PWM: muxed bus from all CPUs
+    // ================================================================
+    wire        muxed_pwm_we;
+    wire [31:0] muxed_pwm_addr;
+    wire [31:0] muxed_pwm_data;
+
+    assign muxed_pwm_we   = sel[0] ? cpu0_pwm_we   : sel[1] ? cpu1_pwm_we   :
+                               sel[2] ? cpu2_pwm_we   : cpu3_pwm_we;
+    assign muxed_pwm_addr  = sel[0] ? cpu0_pwm_addr  : sel[1] ? cpu1_pwm_addr  :
+                               sel[2] ? cpu2_pwm_addr  : cpu3_pwm_addr;
+    assign muxed_pwm_data  = sel[0] ? cpu0_pwm_data  : sel[1] ? cpu1_pwm_data  :
+                               sel[2] ? cpu2_pwm_data  : cpu3_pwm_data;
+
+    shared_pwm u_pwm(
+        .clk(clk),
+        .rst(rst),
+        .we_i(muxed_pwm_we),
+        .addr_i(muxed_pwm_addr),
+        .data_i(muxed_pwm_data),
+        .pwm_o(pwm)
+    );
+
+    // ================================================================
+    // Shared uart_debug bus: mux to/from selected CPU
+    // ================================================================
+    // Outputs: shared uart_debug → selected CPU
+    assign cpu0_dbg_req   = sel[0] ? dbg_req   : 1'b0;
+    assign cpu1_dbg_req   = sel[1] ? dbg_req   : 1'b0;
+    assign cpu2_dbg_req   = sel[2] ? dbg_req   : 1'b0;
+    assign cpu3_dbg_req   = sel[3] ? dbg_req   : 1'b0;
+
+    assign cpu0_dbg_we    = sel[0] ? dbg_we    : 1'b0;
+    assign cpu1_dbg_we    = sel[1] ? dbg_we    : 1'b0;
+    assign cpu2_dbg_we    = sel[2] ? dbg_we    : 1'b0;
+    assign cpu3_dbg_we    = sel[3] ? dbg_we    : 1'b0;
+
+    assign cpu0_dbg_addr  = sel[0] ? dbg_addr  : 32'h0;
+    assign cpu1_dbg_addr  = sel[1] ? dbg_addr  : 32'h0;
+    assign cpu2_dbg_addr  = sel[2] ? dbg_addr  : 32'h0;
+    assign cpu3_dbg_addr  = sel[3] ? dbg_addr  : 32'h0;
+
+    assign cpu0_dbg_wdata = sel[0] ? dbg_wdata : 32'h0;
+    assign cpu1_dbg_wdata = sel[1] ? dbg_wdata : 32'h0;
+    assign cpu2_dbg_wdata = sel[2] ? dbg_wdata : 32'h0;
+    assign cpu3_dbg_wdata = sel[3] ? dbg_wdata : 32'h0;
+
+    assign cpu0_dbg_valid = sel[0] ? dbg_valid : 1'b0;
+    assign cpu1_dbg_valid = sel[1] ? dbg_valid : 1'b0;
+    assign cpu2_dbg_valid = sel[2] ? dbg_valid : 1'b0;
+    assign cpu3_dbg_valid = sel[3] ? dbg_valid : 1'b0;
+
+    // Inputs: selected CPU → shared uart_debug
+    assign dbg_rdata = sel[0] ? cpu0_dbg_rdata : sel[1] ? cpu1_dbg_rdata :
+                      sel[2] ? cpu2_dbg_rdata : cpu3_dbg_rdata;
+    assign dbg_ack   = sel[0] ? cpu0_dbg_ack   : sel[1] ? cpu1_dbg_ack   :
+                      sel[2] ? cpu2_dbg_ack   : cpu3_dbg_ack;
 
     // ================================================================
     // Bridge control
     // ================================================================
-
-    // CPU0: full 16-bit bridge, only gets data when selected
     assign cpu0_bridge_in = sel[0] ? bridge_in : 16'h0;
-
-    // CPU1-3: 8-bit bridge_i 接收外部bridge_in的低8位(输入口)
-    //           8-bit bridge_o 输出到外部bridge_o的高8位(输出口)
     assign cpu1_bridge_i = sel[1] ? bridge_in[7:0] : 8'h0;
     assign cpu2_bridge_i = sel[2] ? bridge_in[7:0] : 8'h0;
     assign cpu3_bridge_i = sel[3] ? bridge_in[7:0] : 8'h0;
 
-    // bridge_o[15:8]: CPU0用高8位; CPU1-3用各自的8-bit bridge_o
     assign bridge_o[15:8] = sel[0] ? cpu0_bridge_o[15:8] :
                             sel[1] ? cpu1_bridge_o :
                             sel[2] ? cpu2_bridge_o :
-                                           cpu3_bridge_o;
-
-    // bridge_o[7:0]: 仅CPU0 bidi模式下有效
+                                   cpu3_bridge_o;
     assign bridge_o[7:0]  = sel[0] ? cpu0_bridge_o[7:0] : 8'h00;
 
-    // bridge_oe: bidi模式(CPU0)用CPU0的oe; 8-in/8-out模式写死hi=1,lo=0
     assign bridge_oe_hi = bridge_bidi_mode ? cpu0_bridge_oe : 1'b1;
     assign bridge_oe_lo = bridge_bidi_mode ? cpu0_bridge_oe : 1'b0;
-
-    // ================================================================
-    // Output mux: over, succ
-    // ================================================================
-    assign over = sel[0] ? cpu0_over :
-                  sel[1] ? cpu1_over :
-                  sel[2] ? cpu2_over :
-                          cpu3_over;
-
-    assign succ = sel[0] ? cpu0_succ :
-                  sel[1] ? cpu1_succ :
-                  sel[2] ? cpu2_succ :
-                          cpu3_succ;
 
     // ================================================================
     // Output mux: uart_tx
@@ -172,137 +300,168 @@ module tinyriscv_4cpu_top(
                                  cpu3_uart_tx;
 
     // ================================================================
-    // Output mux: pwm[3:0]
-    // ================================================================
-    assign pwm = sel[0] ? cpu0_pwm :
-                 sel[1] ? cpu1_pwm :
-                 sel[2] ? cpu2_pwm :
-                         cpu3_pwm;
-
-    // ================================================================
     // I2C mux: outputs from selected CPU, inputs broadcast to all
     // ================================================================
-    assign scl_o  = sel[0] ? cpu0_scl_o  :
-                    sel[1] ? cpu1_scl_o  :
-                    sel[2] ? cpu2_scl_o  :
-                            cpu3_scl_o;
+    assign scl_o  = sel[0] ? cpu0_scl_o  : sel[1] ? cpu1_scl_o  :
+                    sel[2] ? cpu2_scl_o  : cpu3_scl_o;
 
-    assign scl_oe = sel[0] ? cpu0_scl_oe :
-                    sel[1] ? cpu1_scl_oe :
-                    sel[2] ? cpu2_scl_oe :
-                            cpu3_scl_oe;
+    assign scl_oe = sel[0] ? cpu0_scl_oe : sel[1] ? cpu1_scl_oe :
+                    sel[2] ? cpu2_scl_oe : cpu3_scl_oe;
 
-    assign sda_o  = sel[0] ? cpu0_sda_o  :
-                    sel[1] ? cpu1_sda_o  :
-                    sel[2] ? cpu2_sda_o  :
-                            cpu3_sda_o;
+    assign sda_o  = sel[0] ? cpu0_sda_o  : sel[1] ? cpu1_sda_o  :
+                    sel[2] ? cpu2_sda_o  : cpu3_sda_o;
 
-    assign sda_oe = sel[0] ? cpu0_sda_oe :
-                    sel[1] ? cpu1_sda_oe :
-                    sel[2] ? cpu2_sda_oe :
-                            cpu3_sda_oe;
+    assign sda_oe = sel[0] ? cpu0_sda_oe : sel[1] ? cpu1_sda_oe :
+                    sel[2] ? cpu2_sda_oe : cpu3_sda_oe;
 
     // ================================================================
     // CPU0 instantiation (chip_sel=00, full bidirectional bridge)
-    //   clk:        gated clock, only active when chip_sel==00
-    //   rst:        shared reset (active low)
-    //   over/succ:  test completion signals (from regs[26]/[27])
-    //   uart_debug: serial download enable (muxed from PAD)
-    //   uart_tx/rx: UART communication (tx muxed out, rx broadcast in)
-    //   bridge:     16-bit external bus (_in[15:0]/_o[15:0]/_oe split for PAD control)
-    //   pwm:        4-bit PWM output
-    //   scl/sda:    I2C bus (_in/_o/_oe split for open-drain PAD control)
     // ================================================================
     cpu0_tinyriscv_soc_top_pad u_cpu0 (
-        .clk            (cpu0_clk),
-        .rst            (rst),
-        .over           (cpu0_over),
-        .succ           (cpu0_succ),
-        .uart_debug_pin (cpu0_uart_debug),
-        .uart_tx_pin    (cpu0_uart_tx),
-        .uart_rx_pin    (uart_rx_pin),
-        .bridge_in      (cpu0_bridge_in),
-        .bridge_o       (cpu0_bridge_o),
-        .bridge_oe      (cpu0_bridge_oe),
-        .pwm            (cpu0_pwm),
-        .scl_in         (scl_in),
-        .scl_o          (cpu0_scl_o),
-        .scl_oe         (cpu0_scl_oe),
-        .sda_in         (sda_in),
-        .sda_o          (cpu0_sda_o),
-        .sda_oe         (cpu0_sda_oe)
+        .clk(cpu0_clk),
+        .rst(rst),
+        .uart_tx_pin(cpu0_uart_tx),
+        .uart_rx_pin(uart_rx_pin),
+        .bridge_in(cpu0_bridge_in),
+        .bridge_o(cpu0_bridge_o),
+        .bridge_oe(cpu0_bridge_oe),
+        .scl_in(scl_in),
+        .scl_o(cpu0_scl_o),
+        .scl_oe(cpu0_scl_oe),
+        .sda_in(sda_in),
+        .sda_o(cpu0_sda_o),
+        .sda_oe(cpu0_sda_oe),
+        // shared regs
+        .reg_we_o(cpu0_reg_we),
+        .reg_waddr_o(cpu0_reg_waddr),
+        .reg_wdata_o(cpu0_reg_wdata),
+        .reg_raddr1_o(cpu0_reg_raddr1),
+        .reg_raddr2_o(cpu0_reg_raddr2),
+        .reg_rdata1_i(cpu0_rdata1),
+        .reg_rdata2_i(cpu0_rdata2),
+        // shared uart_debug bus
+        .dbg_req_i(cpu0_dbg_req),
+        .dbg_we_i(cpu0_dbg_we),
+        .dbg_addr_i(cpu0_dbg_addr),
+        .dbg_wdata_i(cpu0_dbg_wdata),
+        .dbg_rdata_o(cpu0_dbg_rdata),
+        .dbg_ack_o(cpu0_dbg_ack),
+        // shared PWM bus
+        .pwm_we_o(cpu0_pwm_we),
+        .pwm_addr_o(cpu0_pwm_addr),
+        .pwm_data_o(cpu0_pwm_data)
     );
 
     // ================================================================
     // CPU1 instantiation (chip_sel=01, 8-in/8-out bridge)
-    //   bridge_i[7:0]: 8位输入，连接外部bridge低8位
-    //   bridge_o[7:0]: 8位输出，连接外部bridge高8位
-    //   无bridge_oe，三态门使能由4cpu模块根据chip_sel写死
     // ================================================================
     cpu1_tinyriscv_soc_top u_cpu1 (
-        .clk            (cpu1_clk),
-        .rst            (rst),
-        .over           (cpu1_over),
-        .succ           (cpu1_succ),
-        .uart_debug_pin (cpu1_uart_debug),
-        .uart_tx_pin    (cpu1_uart_tx),
-        .uart_rx_pin    (uart_rx_pin),
-        .bridge_i       (cpu1_bridge_i),
-        .bridge_o       (cpu1_bridge_o),
-        .pwm            (cpu1_pwm),
-        .scl_in         (scl_in),
-        .scl_o          (cpu1_scl_o),
-        .scl_oe         (cpu1_scl_oe),
-        .sda_in         (sda_in),
-        .sda_o          (cpu1_sda_o),
-        .sda_oe         (cpu1_sda_oe)
+        .clk(cpu1_clk),
+        .rst(rst),
+        .uart_tx_pin(cpu1_uart_tx),
+        .uart_rx_pin(uart_rx_pin),
+        .bridge_o(cpu1_bridge_o),
+        .bridge_i(cpu1_bridge_i),
+        .scl_in(scl_in),
+        .scl_o(cpu1_scl_o),
+        .scl_oe(cpu1_scl_oe),
+        .sda_in(sda_in),
+        .sda_o(cpu1_sda_o),
+        .sda_oe(cpu1_sda_oe),
+        // shared regs
+        .reg_we_o(cpu1_reg_we),
+        .reg_waddr_o(cpu1_reg_waddr),
+        .reg_wdata_o(cpu1_reg_wdata),
+        .reg_raddr1_o(cpu1_reg_raddr1),
+        .reg_raddr2_o(cpu1_reg_raddr2),
+        .reg_rdata1_i(cpu1_rdata1),
+        .reg_rdata2_i(cpu1_rdata2),
+        // shared uart_debug bus
+        .dbg_req_i(cpu1_dbg_req),
+        .dbg_we_i(cpu1_dbg_we),
+        .dbg_addr_i(cpu1_dbg_addr),
+        .dbg_wdata_i(cpu1_dbg_wdata),
+        .dbg_rdata_o(cpu1_dbg_rdata),
+        .dbg_ack_o(cpu1_dbg_ack),
+        // shared PWM bus
+        .pwm_we_o(cpu1_pwm_we),
+        .pwm_addr_o(cpu1_pwm_addr),
+        .pwm_data_o(cpu1_pwm_data)
     );
 
     // ================================================================
     // CPU2 instantiation (chip_sel=10, 8-in/8-out bridge)
-    //   接口同CPU1，无em_req/em_ack
-    //   模块已接入
     // ================================================================
     cpu2_tinyriscv_soc_top u_cpu2 (
-        .clk            (cpu2_clk),
-        .rst            (rst),
-        .over           (cpu2_over),
-        .succ           (cpu2_succ),
-        .uart_debug_pin (cpu2_uart_debug),
-        .uart_tx_pin    (cpu2_uart_tx),
-        .uart_rx_pin    (uart_rx_pin),
-        .bridge_i       (cpu2_bridge_i),
-        .bridge_o       (cpu2_bridge_o),
-        .pwm            (cpu2_pwm),
-        .scl_in         (scl_in),
-        .scl_o          (cpu2_scl_o),
-        .scl_oe         (cpu2_scl_oe),
-        .sda_in         (sda_in),
-        .sda_o          (cpu2_sda_o),
-        .sda_oe         (cpu2_sda_oe)
+        .clk(cpu2_clk),
+        .rst(rst),
+        .uart_tx_pin(cpu2_uart_tx),
+        .uart_rx_pin(uart_rx_pin),
+        .bridge_i(cpu2_bridge_i),
+        .bridge_o(cpu2_bridge_o),
+        .scl_in(scl_in),
+        .scl_o(cpu2_scl_o),
+        .scl_oe(cpu2_scl_oe),
+        .sda_in(sda_in),
+        .sda_o(cpu2_sda_o),
+        .sda_oe(cpu2_sda_oe),
+        // shared regs
+        .reg_we_o(cpu2_reg_we),
+        .reg_waddr_o(cpu2_reg_waddr),
+        .reg_wdata_o(cpu2_reg_wdata),
+        .reg_raddr1_o(cpu2_reg_raddr1),
+        .reg_raddr2_o(cpu2_reg_raddr2),
+        .reg_rdata1_i(cpu2_rdata1),
+        .reg_rdata2_i(cpu2_rdata2),
+        // shared uart_debug bus
+        .dbg_req_i(cpu2_dbg_req),
+        .dbg_we_i(cpu2_dbg_we),
+        .dbg_addr_i(cpu2_dbg_addr),
+        .dbg_wdata_i(cpu2_dbg_wdata),
+        .dbg_rdata_o(cpu2_dbg_rdata),
+        .dbg_ack_o(cpu2_dbg_ack),
+        // shared PWM bus
+        .pwm_we_o(cpu2_pwm_we),
+        .pwm_addr_o(cpu2_pwm_addr),
+        .pwm_data_o(cpu2_pwm_data)
     );
 
     // ================================================================
     // CPU3 instantiation (chip_sel=11, 8-in/8-out bridge)
-    //   接口同CPU1
     // ================================================================
     cpu3_tinyriscv_soc_top u_cpu3 (
-        .clk            (cpu3_clk),
-        .rst            (rst),
-        .over           (cpu3_over),
-        .succ           (cpu3_succ),
-        .uart_debug_pin (cpu3_uart_debug),
-        .uart_tx_pin    (cpu3_uart_tx),
-        .uart_rx_pin    (uart_rx_pin),
-        .bridge_i       (cpu3_bridge_i),
-        .bridge_o       (cpu3_bridge_o),
-        .pwm            (cpu3_pwm),
-        .scl_in         (scl_in),
-        .scl_o          (cpu3_scl_o),
-        .scl_oe         (cpu3_scl_oe),
-        .sda_in         (sda_in),
-        .sda_o          (cpu3_sda_o),
-        .sda_oe         (cpu3_sda_oe)
+        .clk(cpu3_clk),
+        .rst(rst),
+        .uart_tx_pin(cpu3_uart_tx),
+        .uart_rx_pin(uart_rx_pin),
+        .bridge_i(cpu3_bridge_i),
+        .bridge_o(cpu3_bridge_o),
+        .scl_in(scl_in),
+        .scl_o(cpu3_scl_o),
+        .scl_oe(cpu3_scl_oe),
+        .sda_in(sda_in),
+        .sda_o(cpu3_sda_o),
+        .sda_oe(cpu3_sda_oe),
+        // shared regs
+        .reg_we_o(cpu3_reg_we),
+        .reg_waddr_o(cpu3_reg_waddr),
+        .reg_wdata_o(cpu3_reg_wdata),
+        .reg_raddr1_o(cpu3_reg_raddr1),
+        .reg_raddr2_o(cpu3_reg_raddr2),
+        .reg_rdata1_i(cpu3_rdata1),
+        .reg_rdata2_i(cpu3_rdata2),
+        // shared uart_debug bus
+        .dbg_req_i(cpu3_dbg_req),
+        .dbg_we_i(cpu3_dbg_we),
+        .dbg_addr_i(cpu3_dbg_addr),
+        .dbg_wdata_i(cpu3_dbg_wdata),
+        .dbg_valid_i(cpu3_dbg_valid),
+        .dbg_rdata_o(cpu3_dbg_rdata),
+        .dbg_ack_o(cpu3_dbg_ack),
+        // shared PWM bus
+        .pwm_we_o(cpu3_pwm_we),
+        .pwm_addr_o(cpu3_pwm_addr),
+        .pwm_data_o(cpu3_pwm_data)
     );
 
 endmodule

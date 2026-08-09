@@ -31,7 +31,6 @@ module cpu2_pwm(
 
     wire  [3:0] channel     ;
     wire        is_a        ;
-    wire        is_b        ;
     wire        is_c        ;
 
     assign channel = addr_i[19:16]                           ;

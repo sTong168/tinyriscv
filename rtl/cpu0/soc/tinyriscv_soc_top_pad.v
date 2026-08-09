@@ -6,11 +6,6 @@ module cpu0_tinyriscv_soc_top_pad(
     input wire clk,
     input wire rst,
 
-    output wire over,         // 测试是否完成信号
-    output wire succ,         // 测试是否成功信号
-
-    input wire uart_debug_pin, // 串口下载使能引脚
-
     output wire uart_tx_pin, // UART发送引脚
     input wire uart_rx_pin,  // UART接收引脚
 
@@ -18,14 +13,34 @@ module cpu0_tinyriscv_soc_top_pad(
     output wire [`BridgeBus] bridge_o,
     output wire              bridge_oe,
 
-    output wire [3:0] pwm,   // PWM 输出引脚
-
     input  wire            scl_in,
     output wire            scl_o,
     output wire            scl_oe,
     input  wire            sda_in,
     output wire            sda_o,
-    output wire            sda_oe
+    output wire            sda_oe,
+
+    // shared regs interface (pass-through)
+    output wire              reg_we_o,
+    output wire[`RegAddrBus] reg_waddr_o,
+    output wire[`RegBus]     reg_wdata_o,
+    output wire[`RegAddrBus] reg_raddr1_o,
+    output wire[`RegAddrBus] reg_raddr2_o,
+    input wire[`RegBus]     reg_rdata1_i,
+    input wire[`RegBus]     reg_rdata2_i,
+
+    // shared uart_debug bus
+    input wire              dbg_req_i,
+    input wire              dbg_we_i,
+    input wire[`MemAddrBus] dbg_addr_i,
+    input wire[`MemBus]     dbg_wdata_i,
+    output wire[`MemBus]     dbg_rdata_o,
+    output wire              dbg_ack_o,
+
+    // shared PWM bus
+    output wire              pwm_we_o,
+    output wire[`MemAddrBus] pwm_addr_o,
+    output wire[`MemBus]     pwm_data_o
 
     );
 
@@ -110,8 +125,13 @@ module cpu0_tinyriscv_soc_top_pad(
 
         .rib_hold_flag_i(rib_hold_flag_o),
 
-        .over(over),
-        .succ(succ)
+        .reg_we_o(reg_we_o),
+        .reg_waddr_o(reg_waddr_o),
+        .reg_wdata_o(reg_wdata_o),
+        .reg_raddr1_o(reg_raddr1_o),
+        .reg_raddr2_o(reg_raddr2_o),
+        .reg_rdata1_i(reg_rdata1_i),
+        .reg_rdata2_i(reg_rdata2_i)
     );
 
     // bridge模块例化
@@ -228,26 +248,17 @@ module cpu0_tinyriscv_soc_top_pad(
         .hold_flag_o(rib_hold_flag_o)
     );
 
-    // 串口下载模块例化
-    uart_debug u_uart_debug(
-        .clk(clk),
-        .rst(rst),
-        .debug_en_i(uart_debug_pin),
-        .req_o(m3_req_i),
-        .mem_we_o(m3_we_i),
-        .mem_addr_o(m3_addr_i),
-        .mem_wdata_o(m3_data_i),
-        .mem_rdata_i(m3_data_o),
-        .ack_i(m3_ack_o)
-    );
+    // debug bus: shared uart_debug -> RIB master 3
+    assign m3_req_i = dbg_req_i;
+    assign m3_we_i = dbg_we_i;
+    assign m3_addr_i = dbg_addr_i;
+    assign m3_data_i = dbg_wdata_i;
+    assign dbg_rdata_o = m3_data_o;
+    assign dbg_ack_o = m3_ack_o;
 
-    pwm u_pwm (
-    .clk(clk),
-    .rst(rst),
-    .we_i(s6_we_o),
-    .addr_i(s6_addr_o),
-    .data_i(s6_data_o),
-    .pwm_o(pwm)
-  );
+    // PWM bus: RIB slave 6 -> shared PWM
+    assign pwm_we_o = s6_we_o;
+    assign pwm_addr_o = s6_addr_o;
+    assign pwm_data_o = s6_data_o;
 
 endmodule

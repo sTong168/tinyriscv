@@ -5,25 +5,41 @@ module cpu3_tinyriscv_soc_top(
     input wire clk,
     input wire rst,
 
-    output wire over,
-    output wire succ,
-
-    input wire uart_debug_pin,
-
     output wire uart_tx_pin,
     input wire uart_rx_pin,
 
     input wire [7:0] bridge_i,
     output wire [7:0] bridge_o,
 
-    output wire [3:0] pwm,
-
     input wire scl_in,
     output wire scl_o,
     output wire scl_oe,
     input wire sda_in,
     output wire sda_o,
-    output wire sda_oe
+    output wire sda_oe,
+
+    // shared regs interface (pass-through)
+    output wire              reg_we_o,
+    output wire[`RegAddrBus] reg_waddr_o,
+    output wire[`RegBus]     reg_wdata_o,
+    output wire[`RegAddrBus] reg_raddr1_o,
+    output wire[`RegAddrBus] reg_raddr2_o,
+    input wire[`RegBus]     reg_rdata1_i,
+    input wire[`RegBus]     reg_rdata2_i,
+
+    // shared uart_debug bus
+    input wire              dbg_req_i,
+    input wire              dbg_we_i,
+    input wire[`MemAddrBus] dbg_addr_i,
+    input wire[`MemBus]     dbg_wdata_i,
+    input wire              dbg_valid_i,
+    output wire[`MemBus]     dbg_rdata_o,
+    output wire              dbg_ack_o,
+
+    // shared PWM bus
+    output wire              pwm_we_o,
+    output wire[`MemAddrBus] pwm_addr_o,
+    output wire[`MemBus]     pwm_data_o
     );
 
     wire[`MemAddrBus] m0_addr_i;
@@ -80,15 +96,15 @@ module cpu3_tinyriscv_soc_top(
     wire[`MemAddrBus] s4_addr_o;
     wire[`MemBus] s4_data_i;
     wire rib_hold_flag_o;
-    wire debug_busy_o;
-    wire uart_debug_mem_valid;
-    wire uart_debug_mem_we;
-    wire[`MemAddrBus] uart_debug_mem_addr;
-    wire[`MemBus] uart_debug_mem_wdata;
+    wire debug_busy_o = dbg_req_i;  // req_o serves as busy flag for RIB hold
+    wire uart_debug_mem_valid = dbg_valid_i;
+    wire uart_debug_mem_we = dbg_we_i;
+    wire[`MemAddrBus] uart_debug_mem_addr = dbg_addr_i;
+    wire uart_debug_mem_wdata = dbg_wdata_i;
     wire uart_debug_ack;
-    wire cpu_rib_hold_flag = rib_hold_flag_o | debug_busy_o;
-    wire cpu_over;
-    wire cpu_succ;
+    assign dbg_rdata_o = m2_data_o;
+    assign dbg_ack_o = uart_debug_ack;
+    wire cpu_rib_hold_flag = rib_hold_flag_o;
     wire sid_start;
     wire sid_done;
     wire rt_start;
@@ -97,41 +113,24 @@ module cpu3_tinyriscv_soc_top(
     wire send_if_done;
     wire[7:0] if_data;
     wire[7:0] i2c_temp_data;
-    reg over_r;
-    reg succ_r;
-    localparam integer DEBUG_DEBOUNCE_CYCLES = 1_000_000;
     localparam [1:0] ROM_CLEAR_IDLE = 2'd0;
     localparam [1:0] ROM_CLEAR_REQ  = 2'd1;
     localparam [1:0] ROM_CLEAR_GAP  = 2'd2;
     localparam [1:0] ROM_CLEAR_DONE = 2'd3;
-    reg debug_pin_meta;
-    reg debug_pin_sync;
-    reg debug_pin_state;
-    reg debug_pin_state_d;
-    reg[19:0] debug_pin_count;
-    reg uart_debug_enable;
     reg uart_debug_mem_valid_block;
     reg[1:0] rom_clear_state;
     reg[7:0] rom_clear_word_addr;
-    reg cpu_run_enable;
     reg rt_hex_pending;
     reg rt_done_d;
     reg send_if_start_d;
     reg[7:0] if_data_d;
-    // Runtime RT/Temp and IF writes use hexadecimal ASCII. During a firmware
-    // download, uart_debug also writes UART TXDATA; those protocol responses
-    // must remain raw bytes (0x06 ACK / 0x15 NAK).
-    wire uart_hex_tx = !debug_pin_state &&
-                       (rt_hex_pending || rt_done || m4_req_i) &&
+    // Runtime RT/Temp and IF writes use hexadecimal ASCII.
+    wire uart_hex_tx = (rt_hex_pending || rt_done || m4_req_i) &&
                        s3_req_o && s3_we_o &&
                        (s3_addr_o[7:0] == 8'h0c);
-    // RIB, UART, and uart_debug retain the board reset so the debug master
-    // can continue transferring data while the CPU is held in reset. The CPU
-    // is released only after a complete, debounced key press/release cycle;
-    // releasing the board reset alone must not start the downloaded program.
-    wire cpu_rst = rst & ~debug_pin_state & cpu_run_enable;
-    wire uart_debug_rom_write_pending = uart_debug_enable &&
-                                        uart_debug_mem_valid &&
+    // CPU is clock-gated by 4cpu_top during debug, so no local reset gating.
+    wire cpu_rst = rst;
+    wire uart_debug_rom_write_pending = uart_debug_mem_valid &&
                                         uart_debug_mem_we &&
                                         (uart_debug_mem_addr[31:10] == 22'd0);
     wire rom_clear_start = (rom_clear_state == ROM_CLEAR_IDLE) &&
@@ -139,12 +138,9 @@ module cpu3_tinyriscv_soc_top(
     wire rom_clear_bus_active = (rom_clear_state == ROM_CLEAR_REQ) ||
                                 (rom_clear_state == ROM_CLEAR_GAP);
 
-    assign over = over_r;
-    assign succ = succ_r;
-    // Once debug is active, let the RIB finish its captured CPU transaction
-    // but do not allow the reset CPU to launch another fetch during bus gaps.
-    assign m0_req_i = cpu_m0_req & ~debug_pin_state;
-    assign m1_req_i = cpu_m1_req & ~debug_pin_state;
+    // CPU master requests are no longer gated; CPU is clock-gated by 4cpu_top during debug.
+    assign m0_req_i = cpu_m0_req;
+    assign m1_req_i = cpu_m1_req;
     assign m2_req_i = rom_clear_bus_active ?
                       (rom_clear_state == ROM_CLEAR_REQ) :
                       (rom_clear_start ? `RIB_NREQ :
@@ -162,7 +158,7 @@ module cpu3_tinyriscv_soc_top(
     // without erasing it. During a download, hold that first write and its ACK
     // until all stale words have been cleared.
     always @ (posedge clk) begin
-        if (!rst || !debug_pin_state) begin
+        if (!rst || !dbg_req_i) begin
             rom_clear_state <= ROM_CLEAR_IDLE;
             rom_clear_word_addr <= 8'd0;
         end else begin
@@ -193,25 +189,13 @@ module cpu3_tinyriscv_soc_top(
         end
     end
 
-    // Stop the CPU as soon as debug is requested, then let any already-active
-    // external-memory transfer finish before uart_debug starts issuing its
-    // one-cycle UART initialization writes.
-    always @ (posedge clk) begin
-        if (!rst || !debug_pin_state) begin
-            uart_debug_enable <= 1'b0;
-        end else if (!uart_debug_enable && !rib_hold_flag_o) begin
-            uart_debug_enable <= 1'b1;
-        end
-    end
-
     // The external-memory bridge completes before uart_debug advances its
     // registered address/data.  Insert one idle cycle so the old write is not
     // submitted again as the next transaction.
     always @ (posedge clk) begin
-        if (!rst || !debug_pin_state) begin
+        if (!rst || !dbg_req_i) begin
             uart_debug_mem_valid_block <= 1'b0;
-        end else if (uart_debug_enable &&
-                     !rom_clear_bus_active && !rom_clear_start &&
+        end else if (!rom_clear_bus_active && !rom_clear_start &&
                      m2_req_i && m2_done_o && m2_we_i &&
                      ((m2_addr_i[31:28] == 4'h0) ||
                       (m2_addr_i[31:28] == 4'h1))) begin
@@ -221,59 +205,19 @@ module cpu3_tinyriscv_soc_top(
         end
     end
 
-    // Synchronize and debounce the debug key before it controls either the
-    // downloader or the CPU reset. A stable 20 ms level is required.
-    always @ (posedge clk or negedge rst) begin
-        if (!rst) begin
-            debug_pin_meta <= 1'b0;
-            debug_pin_sync <= 1'b0;
-            debug_pin_state <= 1'b0;
-            debug_pin_state_d <= 1'b0;
-            debug_pin_count <= 20'd0;
-            cpu_run_enable <= 1'b0;
-        end else begin
-            debug_pin_meta <= uart_debug_pin;
-            debug_pin_sync <= debug_pin_meta;
-            debug_pin_state_d <= debug_pin_state;
-            if (debug_pin_sync == debug_pin_state) begin
-                debug_pin_count <= 20'd0;
-            end else if (debug_pin_count == DEBUG_DEBOUNCE_CYCLES - 1) begin
-                debug_pin_state <= debug_pin_sync;
-                debug_pin_count <= 20'd0;
-            end else begin
-                debug_pin_count <= debug_pin_count + 1'b1;
-            end
-
-            // A key release starts one clean CPU run. Board reset clears this
-            // permission, so pressing/releasing reset cannot run the image.
-            if (debug_pin_state_d && !debug_pin_state)
-                cpu_run_enable <= 1'b1;
-        end
-    end
-
     // The immutable Temp.data writes the raw rT byte once to UART TXDATA.
     // Mark that next write so UART can emit two hexadecimal ASCII digits.
     always @ (posedge clk) begin
-        if (rst == `RstEnable || debug_pin_state == 1'b1) begin
+        if (rst == `RstEnable) begin
             rt_hex_pending <= 1'b0;
             rt_done_d <= 1'b0;
         end else if (uart_hex_tx) begin
             rt_hex_pending <= 1'b0;
-            rt_done_d <= rt_done;
+            rt_done_d = rt_done;
         end else begin
-            rt_done_d <= rt_done;
+            rt_done_d = rt_done;
             if (rt_done && !rt_done_d)
                 rt_hex_pending <= 1'b1;
-        end
-    end
-
-    always @ (posedge clk) begin
-        if (rst == `RstEnable || debug_pin_state == 1'b1) begin
-            over_r <= 1'b1;
-            succ_r <= 1'b1;
-        end else begin
-            over_r <= ~cpu_over;
-            succ_r <= ~cpu_succ;
         end
     end
 
@@ -287,6 +231,11 @@ module cpu3_tinyriscv_soc_top(
             if_data_d <= if_data;
         end
     end
+
+    // PWM bus: RIB slave 2 -> shared PWM (cpu3 uses slave 2 for PWM)
+    assign pwm_we_o = s2_we_o;
+    assign pwm_addr_o = s2_addr_o;
+    assign pwm_data_o = s2_data_o;
 
     cpu3_tinyriscv u_tinyriscv(
         .clk(clk),
@@ -310,8 +259,13 @@ module cpu3_tinyriscv_soc_top(
          .send_if_start_o(send_if_start),
          .send_if_done_i(send_if_done),
          .if_data_o(if_data),
-         .regs_over_o(cpu_over),
-         .regs_succ_o(cpu_succ)
+         .reg_we_o(reg_we_o),
+         .reg_waddr_o(reg_waddr_o),
+         .reg_wdata_o(reg_wdata_o),
+         .reg_raddr1_o(reg_raddr1_o),
+         .reg_raddr2_o(reg_raddr2_o),
+         .reg_rdata1_i(reg_rdata1_i),
+         .reg_rdata2_i(reg_rdata2_i)
      );
 
     cpu3_chip_bridge u_chip_bridge(
@@ -339,15 +293,6 @@ module cpu3_tinyriscv_soc_top(
         .tx_ready_o(s3_ready_i),
         .tx_pin(uart_tx_pin),
         .rx_pin(uart_rx_pin)
-    );
-
-    cpu3_pwm u_pwm(
-        .clk(clk),
-        .rst(rst),
-        .we_i(s2_we_o),
-        .addr_i(s2_addr_o),
-        .data_i(s2_data_o),
-        .pwm_o(pwm)
     );
 
     cpu3_i2c_master u_i2c(
@@ -423,19 +368,6 @@ module cpu3_tinyriscv_soc_top(
         .s4_data_o(),
         .s4_we_o(),
         .hold_flag_o(rib_hold_flag_o)
-    );
-
-    cpu3_uart_debug u_uart_debug(
-        .clk(clk),
-        .rst(rst),
-        .debug_en_i(uart_debug_enable),
-        .req_o(debug_busy_o),
-        .mem_valid_o(uart_debug_mem_valid),
-        .mem_we_o(uart_debug_mem_we),
-        .mem_addr_o(uart_debug_mem_addr),
-        .mem_wdata_o(uart_debug_mem_wdata),
-        .mem_rdata_i(m2_data_o),
-        .ack_i(uart_debug_ack)
     );
 
     cpu3_sID u_sID(

@@ -12,7 +12,7 @@ module cpu2_fpga_top(
     output wire uart_tx_pin,
     input wire uart_rx_pin,
 
-    output wire [2:0] PWM_o,
+    output wire [3:0] PWM_o,
 
     inout wire i2c_scl,
     inout wire i2c_sda
@@ -21,19 +21,6 @@ module cpu2_fpga_top(
     wire over_unused;
     wire [7:0] chip_to_fpga;
     wire [7:0] fpga_to_chip;
-
-    // 测试通过指示：寄存器堆不复位（x27 会残留），所以在顶层做
-    // "复位清零、succ 拉高后保持"的锁存，保证按复位后 LED 熄灭
-    wire succ_raw;
-    reg succ_led;
-    always @(posedge clk) begin
-        if (rst == `RstEnable) begin
-            succ_led <= 1'b0;
-        end else if (succ_raw == 1'b0) begin
-            succ_led <= 1'b1;
-        end
-    end
-    assign succ = ~ succ_led;
 
     // I2C 三态门 ↔ FPGA inout
     wire scl_o, scl_oe;
@@ -57,7 +44,7 @@ module cpu2_fpga_top(
         .clk(clk),
         .rst(rst),
         .over(over_unused),
-        .succ(succ_raw),
+        .succ(succ),
         .uart_debug_pin(uart_debug_pin),
         .uart_tx_pin(uart_tx_pin),
         .uart_rx_pin(uart_rx_pin),

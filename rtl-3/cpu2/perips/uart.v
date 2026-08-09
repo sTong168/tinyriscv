@@ -117,23 +117,17 @@ module cpu2_uart(
                         end
                     end
                 endcase
-                // 修复: 非TXDATA写也必须清tx_data_valid, 否则UART会重发旧字节
-                if (addr_i[7:0] != UART_TXDATA) begin
-                    tx_data_valid <= 1'b0;
-                end
             end else begin
                 tx_data_valid <= 1'b0;
+                if (tx_data_ready == 1'b1) begin
+                    uart_status[0] <= 1'b0;
+                end
                 if (uart_ctrl[1] == 1'b1) begin
                     if (rx_over == 1'b1) begin
                         uart_status[1] <= 1'b1;
                         uart_rx <= {24'h0, rx_data};
                     end
                 end
-            end
-
-            // 修复: busy清除独立于写操作, 避免写寄存器与发送完成同拍时busy永久卡死
-            if (tx_data_ready == 1'b1) begin
-                uart_status[0] <= 1'b0;
             end
         end
     end
@@ -169,7 +163,7 @@ module cpu2_uart(
         if (rst == 1'b0) begin
             state <= S_IDLE;
             cycle_cnt <= 16'd0;
-            tx_reg <= 1'b1;  // 修复: 复位时TX保持高电平(空闲), 避免PC端收到break/0x00
+            tx_reg <= 1'b0;
             bit_cnt <= 4'd0;
             tx_data_ready <= 1'b0;
         end else begin

@@ -41,7 +41,7 @@
 
 
 // 串口更新固件模块
-module cpu2_uart_debug(
+module uart_debug(
 
     input wire clk,                // 时钟信号
     input wire rst,                // 复位信号

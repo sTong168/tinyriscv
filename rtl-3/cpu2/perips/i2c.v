@@ -105,7 +105,7 @@ module cpu2_i2c (
     // SDA输入 (从pad读取)
 
     // tick计数器 (无条件运行)
-    always @(posedge clk) begin
+    always @(posedge clk or posedge rst) begin
         if (rst == `RstEnable) begin
             tick_cnt <= 16'h0;
         end else if (tick) begin
@@ -116,7 +116,7 @@ module cpu2_i2c (
     end
 
     // 寄存器写操作（busy时锁定）
-    always @(posedge clk) begin
+    always @(posedge clk or posedge rst) begin
         if (rst == `RstEnable) begin
             slave_addr <= 7'h48;
             tx_data <= 8'b0;
@@ -143,7 +143,7 @@ module cpu2_i2c (
     end
 
     // 触发锁存 (捕捉单周期脉冲, busy时忽略新请求)
-    always @(posedge clk) begin
+    always @(posedge clk or posedge rst) begin
         if (rst == `RstEnable) begin
             cmd_latched <= 1'b0;
             cmd_rw <= 1'b0;
@@ -159,7 +159,7 @@ module cpu2_i2c (
     end
 
     // I2C主状态机 (所有转移在tick边界)
-    always @(posedge clk) begin
+    always @(posedge clk or posedge rst) begin
         if (rst == `RstEnable) begin
             state <= S_RECOV_LOW;
             bit_cnt <= 4'd0;

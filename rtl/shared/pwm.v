@@ -6,7 +6,7 @@
 // B0~B3 (0x601x0000): high time in clock cycles
 // C     (0x60040000): [3:0] channel enable
 // pwm_o[3:0]: 4 PWM output pins
-module cpu2_pwm(
+module shared_pwm(
 
     input  wire        clk   ,
     input  wire        rst   ,
@@ -31,7 +31,6 @@ module cpu2_pwm(
 
     wire  [3:0] channel     ;
     wire        is_a        ;
-    wire        is_b        ;
     wire        is_c        ;
 
     assign channel = addr_i[19:16]                           ;

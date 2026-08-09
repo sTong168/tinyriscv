@@ -9,6 +9,11 @@
 
 rtl/core/defines.v
 
+# ---- Shared peripherals (regs, pwm, uart_debug) ----
+rtl/shared/regs.v
+rtl/shared/pwm.v
+rtl/shared/uart_debug.v
+
 # ---- CPU0 (苏桐, pad/tape-out version) ----
 rtl/cpu0/core/tinyriscv.v
 rtl/cpu0/core/ctrl.v
@@ -17,7 +22,7 @@ rtl/cpu0/core/id.v
 rtl/cpu0/core/id_ex.v
 rtl/cpu0/core/if_id.v
 rtl/cpu0/core/pc_reg.v
-rtl/cpu0/core/regs.v
+# rtl/cpu0/core/regs.v          (shared: rtl/shared/regs.v)
 rtl/cpu0/core/rib.v
 rtl/cpu0/core/inst_if_ctrl.v
 rtl/cpu0/core/inst_rt_ctrl.v
@@ -25,11 +30,11 @@ rtl/cpu0/core/inst_sid_ctrl.v
 rtl/cpu0/perips/bridge.v
 rtl/cpu0/perips/i2c.v
 rtl/cpu0/perips/uart.v
-rtl/cpu0/perips/pwm.v
+# rtl/cpu0/perips/pwm.v           (shared: rtl/shared/pwm.v)
 rtl/cpu0/perips/bridge_fpga.v
 rtl/cpu0/perips/ram.v
 rtl/cpu0/perips/rom.v
-rtl/cpu0/debug/uart_debug.v
+# rtl/cpu0/debug/uart_debug.v   (shared: rtl/shared/uart_debug.v)
 rtl/cpu0/utils/gen_dff.v
 rtl/cpu0/soc/tinyriscv_soc_top_pad.v
 
@@ -45,14 +50,14 @@ rtl/cpu1/core/id.v
 rtl/cpu1/core/id_ex.v
 rtl/cpu1/core/if_id.v
 rtl/cpu1/core/pc_reg.v
-rtl/cpu1/core/regs.v
+# rtl/cpu1/core/regs.v          (shared: rtl/shared/regs.v)
 rtl/cpu1/core/rib.v
 rtl/cpu1/perips/uart.v
 rtl/cpu1/perips/i2c.v
-rtl/cpu1/perips/pwm.v
+# rtl/cpu1/perips/pwm.v           (shared: rtl/shared/pwm.v)
 rtl/cpu1/perips/lfsr.v
 rtl/cpu1/perips/custom_inst.v
-rtl/cpu1/debug/uart_debug.v
+# rtl/cpu1/debug/uart_debug.v   (shared: rtl/shared/uart_debug.v)
 rtl/cpu1/utils/gen_dff.v
 rtl/cpu1/utils/gen_buf.v
 rtl/cpu1/utils/full_handshake_tx.v
@@ -67,13 +72,13 @@ rtl/cpu2/core/id.v
 rtl/cpu2/core/id_ex.v
 rtl/cpu2/core/if_id.v
 rtl/cpu2/core/pc_reg.v
-rtl/cpu2/core/regs.v
+# rtl/cpu2/core/regs.v          (shared: rtl/shared/regs.v)
 rtl/cpu2/core/rib.v
 rtl/cpu2/perips/i2c.v
 rtl/cpu2/perips/mem_bridge.v
-rtl/cpu2/perips/pwm.v
+# rtl/cpu2/perips/pwm.v           (shared: rtl/shared/pwm.v)
 rtl/cpu2/perips/uart.v
-rtl/cpu2/debug/uart_debug.v
+# rtl/cpu2/debug/uart_debug.v   (shared: rtl/shared/uart_debug.v)
 rtl/cpu2/utils/gen_dff.v
 
 # ---- CPU3 ----
@@ -85,15 +90,15 @@ rtl/cpu3/core/id.v
 rtl/cpu3/core/id_ex.v
 rtl/cpu3/core/if_id.v
 rtl/cpu3/core/pc_reg.v
-rtl/cpu3/core/regs.v
+# rtl/cpu3/core/regs.v          (shared: rtl/shared/regs.v)
 rtl/cpu3/core/rib.v
 rtl/cpu3/core/chip_bridge.v
 rtl/cpu3/perips/uart.v
 rtl/cpu3/perips/i2c_master.v
-rtl/cpu3/perips/pwm.v
+# rtl/cpu3/perips/pwm.v           (shared: rtl/shared/pwm.v)
 rtl/cpu3/perips/sID.v
 rtl/cpu3/perips/sendif.v
-rtl/cpu3/debug/uart_debug.v
+# rtl/cpu3/debug/uart_debug.v   (shared: rtl/shared/uart_debug.v)
 rtl/cpu3/utils/gen_dff.v
 rtl/cpu3/utils/gen_buf.v
 rtl/cpu3/utils/full_handshake_tx.v

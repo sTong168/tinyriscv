@@ -7,24 +7,40 @@ module cpu1_tinyriscv_soc_top #(
     input  wire       clk,
     input  wire       rst,
 
-    output wire       over,
-    output wire       succ,
-
-    input  wire       uart_debug_pin,
     output wire       uart_tx_pin,
     input  wire       uart_rx_pin,
 
     output wire [7:0] bridge_o,
     input  wire [7:0] bridge_i,
 
-    output wire [3:0] pwm,
-
     input  wire       scl_in,
     output wire       scl_o,
     output wire       scl_oe,
     input  wire       sda_in,
     output wire       sda_o,
-    output wire       sda_oe
+    output wire       sda_oe,
+
+    // shared regs interface (pass-through)
+    output wire              reg_we_o,
+    output wire[`RegAddrBus] reg_waddr_o,
+    output wire[`RegBus]     reg_wdata_o,
+    output wire[`RegAddrBus] reg_raddr1_o,
+    output wire[`RegAddrBus] reg_raddr2_o,
+    input wire[`RegBus]     reg_rdata1_i,
+    input wire[`RegBus]     reg_rdata2_i,
+
+    // shared uart_debug bus
+    input wire              dbg_req_i,
+    input wire              dbg_we_i,
+    input wire[`MemAddrBus] dbg_addr_i,
+    input wire[`MemBus]     dbg_wdata_i,
+    output wire[`MemBus]     dbg_rdata_o,
+    output wire              dbg_ack_o,
+
+    // shared PWM bus
+    output wire              pwm_we_o,
+    output wire[`MemAddrBus] pwm_addr_o,
+    output wire[`MemBus]     pwm_data_o
 );
 
     wire [`MemAddrBus] m0_addr_i, m1_addr_i, m2_addr_i, m3_addr_i;
@@ -120,8 +136,13 @@ module cpu1_tinyriscv_soc_top #(
         .rib_pc_addr_o(m1_addr_i),
         .rib_pc_data_i(m1_data_o),
         .rib_hold_flag_i(rib_hold_cpu),
-        .over(over),
-        .succ(succ),
+        .reg_we_o(reg_we_o),
+        .reg_waddr_o(reg_waddr_o),
+        .reg_wdata_o(reg_wdata_o),
+        .reg_raddr1_o(reg_raddr1_o),
+        .reg_raddr2_o(reg_raddr2_o),
+        .reg_rdata1_i(reg_rdata1_i),
+        .reg_rdata2_i(reg_rdata2_i),
         .custom_start_o(custom_start),
         .custom_funct3_o(custom_funct3),
         .custom_rs1_o(custom_rs1),
@@ -143,15 +164,6 @@ module cpu1_tinyriscv_soc_top #(
         .data_o(s3_data_i),
         .tx_pin(uart_main_tx),
         .rx_pin(uart_rx_pin)
-    );
-
-    cpu1_pwm u_pwm(
-        .clk(clk),
-        .rst(rst),
-        .we_i(s6_we_o),
-        .addr_i(s6_addr_o),
-        .data_i(s6_data_o),
-        .pwm_o(pwm)
     );
 
     cpu1_i2c u_i2c(
@@ -197,18 +209,6 @@ module cpu1_tinyriscv_soc_top #(
         .i2c_sda_i(sda_in)
     );
 
-    cpu1_uart_debug u_uart_debug(
-        .clk(clk),
-        .rst(rst),
-        .debug_en_i(uart_debug_pin),
-        .req_o(m3_req_i),
-        .mem_we_o(m3_we_i),
-        .mem_addr_o(m3_addr_i),
-        .mem_wdata_o(m3_data_i),
-        .mem_rdata_i(m3_data_o),
-        .ack_i(rom_wr_ack)
-    );
-
     cpu1_rib u_rib(
         .clk(clk),
         .rst(rst),
@@ -228,6 +228,18 @@ module cpu1_tinyriscv_soc_top #(
     );
 
     assign rib_hold_cpu = rib_hold_rib | mem_hold_flag;
-    assign s6_data_i = 32'h0;
+
+    // debug bus: shared uart_debug -> RIB master 3
+    assign m3_req_i = dbg_req_i;
+    assign m3_we_i = dbg_we_i;
+    assign m3_addr_i = dbg_addr_i;
+    assign m3_data_i = dbg_wdata_i;
+    assign dbg_rdata_o = m3_data_o;
+    assign dbg_ack_o = rom_wr_ack;  // cpu1 uses ext_mem ack
+
+    // PWM bus: RIB slave 6 -> shared PWM
+    assign pwm_we_o = s6_we_o;
+    assign pwm_addr_o = s6_addr_o;
+    assign pwm_data_o = s6_data_o;
 
 endmodule
