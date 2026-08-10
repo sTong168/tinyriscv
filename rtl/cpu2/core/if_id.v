@@ -32,14 +32,17 @@ module cpu2_if_id(
 
     );
 
-    wire hold_en = (hold_flag_i >= `Hold_If);
+    // cpu0-style dual-enable: clear -> NOP bubble, hold -> keep value
+    wire clear_en = (hold_flag_i == `Hold_If_clr || hold_flag_i == `Hold_Id_clr);
+    wire hold_en = (hold_flag_i == `Hold_If_keep || hold_flag_i == `Hold_Id_keep ||
+                    hold_flag_i == `Hold_If_keep_Id_clr);
 
     wire[`InstBus] inst;
-    cpu2_gen_pipe_dff #(32) inst_ff(clk, rst, hold_en, `INST_NOP, inst_i, inst);
+    cpu2_gen_pipe_dff #(32) inst_ff(clk, rst, clear_en, hold_en, `INST_NOP, inst_i, inst);
     assign inst_o = inst;
 
     wire[`InstAddrBus] inst_addr;
-    cpu2_gen_pipe_dff #(32) inst_addr_ff(clk, rst, hold_en, `ZeroWord, inst_addr_i, inst_addr);
+    cpu2_gen_pipe_dff #(32) inst_addr_ff(clk, rst, clear_en, hold_en, `ZeroWord, inst_addr_i, inst_addr);
     assign inst_addr_o = inst_addr;
 
 endmodule

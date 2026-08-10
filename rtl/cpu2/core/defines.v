@@ -40,7 +40,14 @@
 `define Hold_None 3'b000
 `define Hold_Pc   3'b001
 `define Hold_If   3'b010
+`define Hold_If_keep 3'b010
 `define Hold_Id   3'b011
+`define Hold_Id_keep 3'b011
+`define Hold_If_keep_Id_clr 3'b100
+`define Hold_If_clr 3'b110
+`define Hold_Id_clr 3'b111
+`define LSEnable 1'b1
+`define LSDisable 1'b0
 
 // 新增指令
 `define INST_CUSTOM 7'b0101111

@@ -79,6 +79,7 @@ module cpu2_tinyriscv_soc_top(
     wire[`MemBus] m3_data_o;
     wire m3_req_i;
     wire m3_we_i;
+    wire m3_ack_o;
 
     // slave 0 interface (ROM via mem_bridge)
     wire[`MemAddrBus] s0_addr_o;
@@ -110,12 +111,17 @@ module cpu2_tinyriscv_soc_top(
     wire[`MemBus] s7_data_i;
     wire s7_we_o;
 
-    // rib hold flag
-    wire rib_hold_flag_o;
+    // rib hold flags
+    // rib hold: [1]=master 仲裁等待, [0]=slave 外部存储事务等待
+    wire rib_hold_flag_m;
+    wire rib_hold_flag_s;
+    wire [1:0] rib_hold_flag_o = {rib_hold_flag_m, rib_hold_flag_s};
 
-    // mem_bridge req signals
-    wire s0_req_i = m0_req_i | dbg_req_i;
-    wire s1_req_i = m0_req_i | dbg_req_i;
+    // external-memory handshake: arbitrated reqs from rib, done from bridge
+    wire s0_req_o;
+    wire s1_req_o;
+    wire s0_done_o;
+    wire s1_done_o;
 
     // tinyriscv处理器核模块例化
     cpu2_tinyriscv u_tinyriscv(
@@ -144,21 +150,22 @@ module cpu2_tinyriscv_soc_top(
     cpu2_mem_bridge u_mem_bridge(
         .clk(clk),
         .rst(rst),
-        .s0_req_i(s0_req_i),
+        .s0_req_i(s0_req_o),
         .s0_we_i(s0_we_o),
         .s0_addr_i(s0_addr_o),
         .s0_data_i(s0_data_o),
         .s0_data_o(s0_data_i),
+        .s0_done_o(s0_done_o),
 
-        .s1_req_i(s1_req_i),
+        .s1_req_i(s1_req_o),
         .s1_we_i(s1_we_o),
         .s1_addr_i(s1_addr_o),
         .s1_data_i(s1_data_o),
         .s1_data_o(s1_data_i),
+        .s1_done_o(s1_done_o),
 
         .ext_data_i(bridge_i),
-        .ext_data_o(bridge_o),
-        .hold_flag_o()
+        .ext_data_o(bridge_o)
     );
 
     // uart模块例化
@@ -213,18 +220,23 @@ module cpu2_tinyriscv_soc_top(
         .m3_data_o(m3_data_o),
         .m3_req_i(m3_req_i),
         .m3_we_i(m3_we_i),
+        .m3_ack_o(m3_ack_o),
 
         // slave 0 interface
         .s0_addr_o(s0_addr_o),
         .s0_data_o(s0_data_o),
         .s0_data_i(s0_data_i),
         .s0_we_o(s0_we_o),
+        .s0_req_o(s0_req_o),
+        .s0_done_i(s0_done_o),
 
         // slave 1 interface
         .s1_addr_o(s1_addr_o),
         .s1_data_o(s1_data_o),
         .s1_data_i(s1_data_i),
         .s1_we_o(s1_we_o),
+        .s1_req_o(s1_req_o),
+        .s1_done_i(s1_done_o),
 
         // slave 3 interface
         .s3_addr_o(s3_addr_o),
@@ -244,7 +256,9 @@ module cpu2_tinyriscv_soc_top(
         .s7_data_i(s7_data_i),
         .s7_we_o(s7_we_o),
 
-        .hold_flag_o(rib_hold_flag_o)
+        // external-memory handshake
+        .hold_flag_m(rib_hold_flag_m),
+        .hold_flag_s(rib_hold_flag_s)
     );
 
     // debug bus: shared uart_debug -> RIB master 3
@@ -253,7 +267,9 @@ module cpu2_tinyriscv_soc_top(
     assign m3_addr_i = dbg_addr_i;
     assign m3_data_i = dbg_wdata_i;
     assign dbg_rdata_o = m3_data_o;
-    assign dbg_ack_o = 1'b1;  // cpu2 ack is hardwired
+    // RIB forwards the slave completion to master 3: the bridge ack for
+    // external ROM/RAM writes, immediate ack for one-cycle peripherals.
+    assign dbg_ack_o = m3_ack_o;
 
     // PWM bus: RIB slave 6 -> shared PWM
     assign pwm_we_o   = s6_we_o;

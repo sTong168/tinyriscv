@@ -31,7 +31,7 @@ module cpu2_tinyriscv(
     output wire[`MemAddrBus] rib_pc_addr_o,    // 取指地址
     input wire[`MemBus] rib_pc_data_i,         // 取到的指令内容
 
-    input wire rib_hold_flag_i,                // 总线暂停标志
+    input wire [1:0] rib_hold_flag_i,          // {master 仲裁等待, slave 外部事务等待}
 
     // shared regs interface
     output wire              reg_we_o,
@@ -87,6 +87,7 @@ module cpu2_tinyriscv(
     wire ex_reg_we_o;
     wire[`RegAddrBus] ex_reg_waddr_o;
     wire ex_hold_flag_o;
+    wire ex_ls_flag_o;
     wire ex_jump_flag_o;
     wire[`InstAddrBus] ex_jump_addr_o;
 
@@ -127,6 +128,7 @@ module cpu2_tinyriscv(
         .jump_flag_i(ex_jump_flag_o),
         .jump_addr_i(ex_jump_addr_o),
         .hold_flag_ex_i(ex_hold_flag_o),
+        .ls_flag_i(ex_ls_flag_o),
         .hold_flag_rib_i(rib_hold_flag_i),
         .hold_flag_o(ctrl_hold_flag_o),
         .jump_flag_o(ctrl_jump_flag_o),
@@ -217,6 +219,7 @@ module cpu2_tinyriscv(
         .reg_we_o(ex_reg_we_o),
         .reg_waddr_o(ex_reg_waddr_o),
         .hold_flag_o(ex_hold_flag_o),
+        .ls_flag_o(ex_ls_flag_o),
         .jump_flag_o(ex_jump_flag_o),
         .jump_addr_o(ex_jump_addr_o)
     );

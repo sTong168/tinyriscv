@@ -8,7 +8,7 @@
 //   Write any address : reseed LFSR with written value (0 → use default seed)
 //
 // Polynomial: x^32 + x^22 + x^2 + x + 1  (primitive, maximal-length 2^32-1)
-// Feedback:   lfsr[31] ^ lfsr[21] ^ lfsr[1] ^ lfsr[0]  (left-shift)
+// Feedback:   cpu1_lfsr[31] ^ cpu1_lfsr[21] ^ cpu1_lfsr[1] ^ cpu1_lfsr[0]  (left-shift)
 module cpu1_lfsr(
     input  wire        clk,
     input  wire        rst,

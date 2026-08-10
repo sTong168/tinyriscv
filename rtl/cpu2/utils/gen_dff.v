@@ -15,11 +15,14 @@
  */
 
 // 带默认值和控制信号的流水线触发器
+// clear_en=1 -> output def_val (bubble); hold_en=1 -> keep current value;
+// otherwise -> capture din.  (cpu0-style dual-enable semantics)
 module cpu2_gen_pipe_dff #(
     parameter DW = 32)(
 
     input wire clk,
     input wire rst,
+    input wire clear_en,
     input wire hold_en,
 
     input wire[DW-1:0] def_val,
@@ -31,8 +34,10 @@ module cpu2_gen_pipe_dff #(
     reg[DW-1:0] qout_r;
 
     always @ (posedge clk) begin
-        if (!rst | hold_en) begin
+        if (!rst | clear_en) begin
             qout_r <= def_val;
+        end else if (hold_en) begin
+            qout_r <= qout_r;
         end else begin
             qout_r <= din;
         end

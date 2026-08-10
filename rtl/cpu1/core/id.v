@@ -14,14 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-`include "defines.v"
+`include "../core/defines.v"
 
 // 译码模块 (增加 INST_TYPE_CUSTOM 解码)
 module cpu1_id(
 
 	input wire rst,
 
-    // from if_id
+    // from cpu1_if_id
     input wire[`InstBus] inst_i,
     input wire[`InstAddrBus] inst_addr_i,
 
@@ -29,14 +29,14 @@ module cpu1_id(
     input wire[`RegBus] reg1_rdata_i,
     input wire[`RegBus] reg2_rdata_i,
 
-    // from ex
+    // from cpu1_ex
     input wire ex_jump_flag_i,
 
     // to regs
     output reg[`RegAddrBus] reg1_raddr_o,
     output reg[`RegAddrBus] reg2_raddr_o,
 
-    // to ex
+    // to cpu1_ex
     output reg[`MemAddrBus] op1_o,
     output reg[`MemAddrBus] op2_o,
     output reg[`MemAddrBus] op1_jump_o,
@@ -231,7 +231,7 @@ module cpu1_id(
                         op2_o = `ZeroWord;
                     end
                     `INST_CUSTOM_RT: begin
-                        // rT: EX will stall; result written from custom_inst
+                        // rT: EX will stall; result written from cpu1_custom_inst
                         reg_we_o    = `WriteDisable;
                         reg_waddr_o = rd;
                         reg1_raddr_o = `ZeroReg;

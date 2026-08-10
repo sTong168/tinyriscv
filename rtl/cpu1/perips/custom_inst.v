@@ -1,9 +1,9 @@
-// custom_inst.v — 自定义指令执行单元
+// cpu1_custom_inst.v — 自定义指令执行单元
 // 支持三条扩展指令:
 //   sID (funct3=0): 通过UART发送学号 "2025270014\n"
 //   rT  (funct3=1): 通过I2C读取LM75温度，stall CPU
 //   if  (funct3=2): Integrate-and-Fire神经元模型
-//       imm!=0: rd = rs1 + sign_ext(imm)  (纯组合，由ex.v直接处理)
+//       imm!=0: rd = rs1 + sign_ext(imm)  (纯组合，由cpu1_ex.v直接处理)
 //       imm==0: if rs1 >= x31 → UART发送rs1[7:0], rd=0; else rd=rs1
 `include "../core/defines.v"
 
@@ -11,7 +11,7 @@ module cpu1_custom_inst(
     input  wire        clk,
     input  wire        rst,
 
-    // from ex.v (combinational, held while instruction is in EX stage)
+    // from cpu1_ex.v (combinational, held while instruction is in EX stage)
     input  wire        start_i,
     input  wire [2:0]  funct3_i,
     input  wire [31:0] rs1_i,
@@ -19,7 +19,7 @@ module cpu1_custom_inst(
     input  wire [11:0] imm_i,
     input  wire [4:0]  rd_addr_i,  // rd register address (latched when rT starts)
 
-    // to ex.v
+    // to cpu1_ex.v
     output reg         busy_o,    // 1 = I2C running
     output reg         done_o,    // 1 = result ready (one-clock pulse)
     output reg  [31:0] result_o,  // temperature result

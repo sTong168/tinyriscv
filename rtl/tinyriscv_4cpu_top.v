@@ -2,8 +2,8 @@
 
 // 4-CPU tinyriscv SOC top module
 // - chip_sel[1:0] selects active CPU (only selected CPU gets clock)
-// - chip_sel=00: CPU0 gets full bidirectional bridge (16-bit, _in/_o/_oe)
-// - chip_sel!=00: selected CPU gets 8-in/8-out bridge (bridge_i[7:0], bridge_o[7:0])
+// - chip_sel=00/01: CPU0/CPU1 full 16-bit half-duplex bridge (_in/_o/_oe)
+// - chip_sel=10/11: CPU2/CPU3 8-in/8-out bridge (bridge_i[7:0], bridge_o[7:0])
 // - Shared peripherals: regs, pwm, uart_debug instantiated once, muxed by chip_sel
 // - uart_debug and selected CPU share RIB bus (same as original single-CPU design)
 module tinyriscv_4cpu_top(
@@ -48,7 +48,8 @@ module tinyriscv_4cpu_top(
     assign sel[2] = (chip_sel == 2'b10);
     assign sel[3] = (chip_sel == 2'b11);
 
-    wire bridge_bidi_mode = (chip_sel == 2'b00);
+    // CPU0 + CPU1 use the same 16-bit half-duplex protocol / PAD OE style
+    wire bridge_bidi_mode = (chip_sel == 2'b00) || (chip_sel == 2'b01);
 
     // ================================================================
     // Per-CPU signal declarations (must precede mux logic for VCS)
@@ -81,9 +82,10 @@ module tinyriscv_4cpu_top(
     wire [31:0] cpu0_pwm_addr;
     wire [31:0] cpu0_pwm_data;
 
-    // --- CPU1 signals (8-in/8-out bridge) ---
-    wire [7:0]  cpu1_bridge_i;
-    wire [7:0]  cpu1_bridge_o;
+    // --- CPU1 signals (16-bit bidi bridge, same as CPU0) ---
+    wire [15:0] cpu1_bridge_in;
+    wire [15:0] cpu1_bridge_o;
+    wire        cpu1_bridge_oe;
     wire        cpu1_scl_o, cpu1_scl_oe;
     wire        cpu1_sda_o, cpu1_sda_oe;
     wire        cpu1_uart_tx;
@@ -278,18 +280,20 @@ module tinyriscv_4cpu_top(
     // Bridge control
     // ================================================================
     assign cpu0_bridge_in = sel[0] ? bridge_in : 16'h0;
-    assign cpu1_bridge_i = sel[1] ? bridge_in[7:0] : 8'h0;
-    assign cpu2_bridge_i = sel[2] ? bridge_in[7:0] : 8'h0;
-    assign cpu3_bridge_i = sel[3] ? bridge_in[7:0] : 8'h0;
+    assign cpu1_bridge_in = sel[1] ? bridge_in : 16'h0;
+    assign cpu2_bridge_i  = sel[2] ? bridge_in[7:0] : 8'h0;
+    assign cpu3_bridge_i  = sel[3] ? bridge_in[7:0] : 8'h0;
 
     assign bridge_o[15:8] = sel[0] ? cpu0_bridge_o[15:8] :
-                            sel[1] ? cpu1_bridge_o :
+                            sel[1] ? cpu1_bridge_o[15:8] :
                             sel[2] ? cpu2_bridge_o :
                                    cpu3_bridge_o;
-    assign bridge_o[7:0]  = sel[0] ? cpu0_bridge_o[7:0] : 8'h00;
+    assign bridge_o[7:0]  = sel[0] ? cpu0_bridge_o[7:0] :
+                            sel[1] ? cpu1_bridge_o[7:0] : 8'h00;
 
-    assign bridge_oe_hi = bridge_bidi_mode ? cpu0_bridge_oe : 1'b1;
-    assign bridge_oe_lo = bridge_bidi_mode ? cpu0_bridge_oe : 1'b0;
+    wire bidi_oe = sel[0] ? cpu0_bridge_oe : cpu1_bridge_oe;
+    assign bridge_oe_hi = bridge_bidi_mode ? bidi_oe : 1'b1;
+    assign bridge_oe_lo = bridge_bidi_mode ? bidi_oe : 1'b0;
 
     // ================================================================
     // Output mux: uart_tx
@@ -353,15 +357,16 @@ module tinyriscv_4cpu_top(
     );
 
     // ================================================================
-    // CPU1 instantiation (chip_sel=01, 8-in/8-out bridge)
+    // CPU1 instantiation (chip_sel=01, 16-bit bidi bridge — 王子阳 correct)
     // ================================================================
     cpu1_tinyriscv_soc_top u_cpu1 (
         .clk(cpu1_clk),
         .rst(rst),
         .uart_tx_pin(cpu1_uart_tx),
         .uart_rx_pin(uart_rx_pin),
+        .bridge_in(cpu1_bridge_in),
         .bridge_o(cpu1_bridge_o),
-        .bridge_i(cpu1_bridge_i),
+        .bridge_oe(cpu1_bridge_oe),
         .scl_in(scl_in),
         .scl_o(cpu1_scl_o),
         .scl_oe(cpu1_scl_oe),

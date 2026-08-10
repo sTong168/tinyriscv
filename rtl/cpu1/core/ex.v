@@ -1,40 +1,73 @@
-`include "defines.v"
+ /*                                                                      
+ Copyright 2019 Blue Liang, liangkangnan@163.com
+                                                                         
+ Licensed under the Apache License, Version 2.0 (the "License");         
+ you may not use this file except in compliance with the License.        
+ You may obtain a copy of the License at                                 
+                                                                         
+     http://www.apache.org/licenses/LICENSE-2.0                          
+                                                                         
+ Unless required by applicable law or agreed to in writing, software    
+ distributed under the License is distributed on an "AS IS" BASIS,       
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and     
+ limitations under the License.                                          
+ */
 
+`include "../core/defines.v"
+
+// 执行模块
+// 纯组合逻辑电路
 module cpu1_ex(
+
     input wire rst,
-    input wire[`InstBus] inst_i,
-    input wire[`InstAddrBus] inst_addr_i,
-    input wire reg_we_i,
-    input wire[`RegAddrBus] reg_waddr_i,
-    input wire[`RegBus] reg1_rdata_i,
-    input wire[`RegBus] reg2_rdata_i,
+
+    // from cpu1_id
+    input wire[`InstBus] inst_i,            // 指令内容
+    input wire[`InstAddrBus] inst_addr_i,   // 指令地址
+    input wire reg_we_i,                    // 是否写通用寄存器
+    input wire[`RegAddrBus] reg_waddr_i,    // 写通用寄存器地址
+    input wire[`RegBus] reg1_rdata_i,       // 通用寄存器1输入数据
+    input wire[`RegBus] reg2_rdata_i,       // 通用寄存器2输入数据
     input wire[`MemAddrBus] op1_i,
     input wire[`MemAddrBus] op2_i,
     input wire[`MemAddrBus] op1_jump_i,
     input wire[`MemAddrBus] op2_jump_i,
-    input wire[`MemBus] mem_rdata_i,
-    output reg[`MemBus] mem_wdata_o,
-    output reg[`MemAddrBus] mem_raddr_o,
-    output reg[`MemAddrBus] mem_waddr_o,
-    output wire mem_we_o,
-    output wire mem_req_o,
-    output wire[`RegBus] reg_wdata_o,
-    output wire reg_we_o,
-    output wire[`RegAddrBus] reg_waddr_o,
-    output wire hold_flag_o,
-    output wire jump_flag_o,
-    output wire[`InstAddrBus] jump_addr_o,
-    output wire custom_start_o,
-    output wire [2:0] custom_funct3_o,
-    output wire [31:0] custom_rs1_o,
-    output wire [31:0] custom_rs2_o,
-    output wire [11:0] custom_imm_o,
-    output wire [`RegAddrBus] custom_rd_waddr_o,
-    input wire custom_busy_i,
-    input wire custom_done_i,
-    input wire [31:0] custom_result_i,
-    input wire [`RegAddrBus] custom_rd_waddr_i
-);
+
+    // from mem
+    input wire[`MemBus] mem_rdata_i,        // 内存输入数据
+
+    // to mem
+    output reg[`MemBus] mem_wdata_o,        // 写内存数据
+    output reg[`MemAddrBus] mem_raddr_o,    // 读内存地址
+    output reg[`MemAddrBus] mem_waddr_o,    // 写内存地址
+    output wire mem_we_o,                   // 是否要写内存
+    output wire mem_req_o,                  // 请求访问内存标志
+
+    // to regs
+    output wire[`RegBus] reg_wdata_o,       // 写寄存器数据
+    output wire reg_we_o,                   // 是否要写通用寄存器
+    output wire[`RegAddrBus] reg_waddr_o,   // 写通用寄存器地址
+
+    // to cpu1_ctrl
+    output wire hold_flag_o,                // 是否暂停标志
+    output wire ls_flag_o,                  // load/store 访存标志
+    output wire jump_flag_o,                // 是否跳转标志
+    output wire[`InstAddrBus] jump_addr_o,  // 跳转目的地址
+
+    // custom instruction interface
+    output wire custom_start_o,             // 1 = custom instruction in EX stage
+    output wire [2:0] custom_funct3_o,      // funct3 of custom instruction
+    output wire [31:0] custom_rs1_o,        // rs1 value
+    output wire [31:0] custom_rs2_o,        // rs2 value (x31 for IF)
+    output wire [11:0] custom_imm_o,        // sign-extended immediate
+    output wire [`RegAddrBus] custom_rd_waddr_o, // rd address → cpu1_custom_inst for storage
+    input wire custom_busy_i,               // 1 = I2C running
+    input wire custom_done_i,               // 1 = I2C done (one-clock pulse)
+    input wire [31:0] custom_result_i,      // temperature result
+    input wire [`RegAddrBus] custom_rd_waddr_i   // stored rd address from cpu1_custom_inst
+
+    );
 
     wire[1:0] mem_raddr_index;
     wire[1:0] mem_waddr_index;
@@ -50,11 +83,13 @@ module cpu1_ex(
     wire[6:0] opcode;
     wire[2:0] funct3;
     wire[6:0] funct7;
+    wire[4:0] rd;
     reg[`RegBus] reg_wdata;
     reg reg_we;
     reg[`RegAddrBus] reg_waddr;
     reg custom_jump_flag;
     reg[`InstAddrBus] custom_jump_addr;
+    // custom instruction write-back signals
     reg[`RegBus] custom_wdata;
     reg custom_we;
     reg[`RegAddrBus] custom_waddr;
@@ -64,37 +99,48 @@ module cpu1_ex(
     reg[`InstAddrBus] jump_addr;
     reg mem_we;
     reg mem_req;
+    reg ls_flag;
 
     assign opcode = inst_i[6:0];
     assign funct3 = inst_i[14:12];
     assign funct7 = inst_i[31:25];
+    assign rd = inst_i[11:7];
 
     assign sr_shift = reg1_rdata_i >> reg2_rdata_i[4:0];
     assign sri_shift = reg1_rdata_i >> inst_i[24:20];
     assign sr_shift_mask = 32'hffffffff >> reg2_rdata_i[4:0];
     assign sri_shift_mask = 32'hffffffff >> inst_i[24:20];
+
     assign op1_add_op2_res = op1_i + op2_i;
     assign op1_jump_add_op2_jump_res = op1_jump_i + op2_jump_i;
+
+    // 有符号数比较
     assign op1_ge_op2_signed = $signed(op1_i) >= $signed(op2_i);
+    // 无符号数比较
     assign op1_ge_op2_unsigned = op1_i >= op2_i;
     assign op1_eq_op2 = (op1_i == op2_i);
+
     assign mem_raddr_index = (reg1_rdata_i + {{20{inst_i[31]}}, inst_i[31:20]}) & 2'b11;
     assign mem_waddr_index = (reg1_rdata_i + {{20{inst_i[31]}}, inst_i[31:25], inst_i[11:7]}) & 2'b11;
 
-    assign custom_start_o    = (opcode == `INST_TYPE_CUSTOM);
-    assign custom_funct3_o   = funct3;
-    assign custom_rs1_o      = reg1_rdata_i;
-    assign custom_rs2_o      = reg2_rdata_i;
-    assign custom_imm_o      = inst_i[31:20];
-    assign custom_rd_waddr_o = reg_waddr_i;
+    // custom instruction output signals (combinational)
+    assign custom_start_o     = (opcode == `INST_TYPE_CUSTOM);
+    assign custom_funct3_o    = funct3;
+    assign custom_rs1_o       = reg1_rdata_i;
+    assign custom_rs2_o       = reg2_rdata_i;
+    assign custom_imm_o       = inst_i[31:20];
+    assign custom_rd_waddr_o  = reg_waddr_i;
 
     assign reg_wdata_o = reg_wdata | custom_wdata;
-    assign reg_we_o    = reg_we | custom_we;
+    assign reg_we_o = reg_we || custom_we;
     assign reg_waddr_o = reg_waddr | custom_waddr;
-    assign mem_we_o    = mem_we;
-    assign mem_req_o   = mem_req;
-    assign hold_flag_o = hold_flag | custom_hold_flag;
-    assign jump_flag_o = jump_flag | custom_jump_flag;
+
+    assign mem_we_o = mem_we;
+    assign mem_req_o = mem_req;
+
+    assign hold_flag_o = hold_flag || custom_hold_flag;
+    assign ls_flag_o = ls_flag;
+    assign jump_flag_o = jump_flag || custom_jump_flag;
     assign jump_addr_o = jump_addr | custom_jump_addr;
 
     // 执行
@@ -102,6 +148,8 @@ module cpu1_ex(
         reg_we = reg_we_i;
         reg_waddr = reg_waddr_i;
         mem_req = `RIB_NREQ;
+        ls_flag = `LSDisable;
+
         case (opcode)
             `INST_TYPE_I: begin
                 case (funct3)
@@ -315,6 +363,7 @@ module cpu1_ex(
                 end
             end
             `INST_TYPE_L: begin
+                ls_flag = `LSEnable;
                 case (funct3)
                     `INST_LB: begin
                         jump_flag = `JumpDisable;
@@ -418,6 +467,7 @@ module cpu1_ex(
                 endcase
             end
             `INST_TYPE_S: begin
+                ls_flag = `LSEnable;
                 case (funct3)
                     `INST_SB: begin
                         jump_flag = `JumpDisable;
@@ -606,7 +656,7 @@ module cpu1_ex(
                 jump_addr   = `ZeroWord;
                 case (funct3)
                     `INST_CUSTOM_SID: begin
-                        // fire-and-forget: signal custom_inst, no hold, no reg write here
+                        // fire-and-forget: signal cpu1_custom_inst, no hold, no reg write here
                         hold_flag   = `HoldDisable;
                         reg_wdata   = `ZeroWord;
                     end
@@ -672,11 +722,6 @@ module cpu1_ex(
     end
 
     // custom instruction hold / result write-back
-    // Mirrors the div pattern:
-    //   1. rT first enters EX → jump past it (so PC advances) + hold (pipeline freezes)
-    //   2. NOP in EX, I2C running → busy_i=1 → hold (opcode-independent)
-    //   3. NOP in EX, I2C done   → done_i=1 → write result + release hold
-    // The jump prevents rT from re-entering EX after the stall ends.
     always @ (*) begin
         custom_jump_flag = `JumpDisable;
         custom_jump_addr = `ZeroWord;
@@ -685,7 +730,7 @@ module cpu1_ex(
         custom_wdata     = `ZeroWord;
         custom_waddr     = `ZeroReg;
 
-        // rT enters EX: jump past it + stall (same as DIV approach)
+        // rT enters EX: jump past it + stall
         if (opcode == `INST_TYPE_CUSTOM && funct3 == `INST_CUSTOM_RT) begin
             custom_jump_flag = `JumpEnable;
             custom_jump_addr = inst_addr_i + 32'h4;

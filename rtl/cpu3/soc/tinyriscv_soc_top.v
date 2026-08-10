@@ -100,11 +100,11 @@ module cpu3_tinyriscv_soc_top(
     wire uart_debug_mem_valid = dbg_valid_i;
     wire uart_debug_mem_we = dbg_we_i;
     wire[`MemAddrBus] uart_debug_mem_addr = dbg_addr_i;
-    wire uart_debug_mem_wdata = dbg_wdata_i;
+    wire[`MemBus] uart_debug_mem_wdata = dbg_wdata_i;
     wire uart_debug_ack;
     assign dbg_rdata_o = m2_data_o;
     assign dbg_ack_o = uart_debug_ack;
-    wire cpu_rib_hold_flag = rib_hold_flag_o;
+    wire cpu_rib_hold_flag = rib_hold_flag_o | debug_busy_o;
     wire sid_start;
     wire sid_done;
     wire rt_start;
@@ -128,8 +128,9 @@ module cpu3_tinyriscv_soc_top(
     wire uart_hex_tx = (rt_hex_pending || rt_done || m4_req_i) &&
                        s3_req_o && s3_we_o &&
                        (s3_addr_o[7:0] == 8'h0c);
-    // CPU is clock-gated by 4cpu_top during debug, so no local reset gating.
-    wire cpu_rst = rst;
+    // Hold only the CPU-side engines in reset during debug. The RIB, UART,
+    // ROM-clear logic, and external-memory bridge must keep running.
+    wire cpu_rst = rst & ~debug_busy_o;
     wire uart_debug_rom_write_pending = uart_debug_mem_valid &&
                                         uart_debug_mem_we &&
                                         (uart_debug_mem_addr[31:10] == 22'd0);
@@ -138,9 +139,10 @@ module cpu3_tinyriscv_soc_top(
     wire rom_clear_bus_active = (rom_clear_state == ROM_CLEAR_REQ) ||
                                 (rom_clear_state == ROM_CLEAR_GAP);
 
-    // CPU master requests are no longer gated; CPU is clock-gated by 4cpu_top during debug.
-    assign m0_req_i = cpu_m0_req;
-    assign m1_req_i = cpu_m1_req;
+    // Do not let a reset CPU launch data or instruction transactions while
+    // uart_debug owns the memory path.
+    assign m0_req_i = cpu_m0_req & ~debug_busy_o;
+    assign m1_req_i = cpu_m1_req & ~debug_busy_o;
     assign m2_req_i = rom_clear_bus_active ?
                       (rom_clear_state == ROM_CLEAR_REQ) :
                       (rom_clear_start ? `RIB_NREQ :
@@ -213,9 +215,9 @@ module cpu3_tinyriscv_soc_top(
             rt_done_d <= 1'b0;
         end else if (uart_hex_tx) begin
             rt_hex_pending <= 1'b0;
-            rt_done_d = rt_done;
+            rt_done_d <= rt_done;
         end else begin
-            rt_done_d = rt_done;
+            rt_done_d <= rt_done;
             if (rt_done && !rt_done_d)
                 rt_hex_pending <= 1'b1;
         end

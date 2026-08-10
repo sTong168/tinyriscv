@@ -1,65 +1,70 @@
 `include "../core/defines.v"
 
-// Bridge to expose on-chip slave as off-chip memory interface
-// Uses 8-bit TX/RX handshake: tx_valid/tx_ready and rx_valid/rx_ready
+// Chip-side bridge to external (FPGA-side) ROM/RAM over an 8-bit frame bus.
+// No storage lives inside this module: every access performs a full frame
+// exchange over ext_data_o/ext_data_i, and the RIB stalls the CPU
+// (ext_hold) until the FPGA-side bridge answers. Read data is delivered
+// on the S_DELIVER cycle (done_o pulse), so the CPU samples it in the same
+// cycle the stall is released.
+//
+// Request frame: A5, {6'b0, target_ram, we}, addr[31:0], wdata[31:0]
+// Response frame: 5A, status, rdata[31:0]  (big-endian byte order)
 module cpu2_mem_bridge(
     input wire clk,
     input wire rst,
 
-    // interface from RIB (slave side)
+    // slave 0 interface (external ROM) from RIB
     input wire s0_req_i,
     input wire s0_we_i,
     input wire[`MemAddrBus] s0_addr_i,
     input wire[`MemBus] s0_data_i,
     output wire[`MemBus] s0_data_o,
+    output wire s0_done_o,
 
+    // slave 1 interface (external RAM) from RIB
     input wire s1_req_i,
     input wire s1_we_i,
     input wire[`MemAddrBus] s1_addr_i,
     input wire[`MemBus] s1_data_i,
     output wire[`MemBus] s1_data_o,
-    
+    output wire s1_done_o,
+
+    // 8-bit frame bus to FPGA
     input wire[7:0] ext_data_i,
-    output reg[7:0] ext_data_o,
-    output wire hold_flag_o
+    output reg[7:0] ext_data_o
     );
 
-    localparam [3:0] S_IDLE       = 4'd0;
-    localparam [3:0] S_SEND_MAGIC = 4'd1;
-    localparam [3:0] S_SEND_CMD   = 4'd2;
-    localparam [3:0] S_SEND_ADDR0 = 4'd3;
-    localparam [3:0] S_SEND_ADDR1 = 4'd4;
-    localparam [3:0] S_SEND_ADDR2 = 4'd5;
-    localparam [3:0] S_SEND_ADDR3 = 4'd6;
-    localparam [3:0] S_SEND_DATA0 = 4'd7;
-    localparam [3:0] S_SEND_DATA1 = 4'd8;
-    localparam [3:0] S_SEND_DATA2 = 4'd9;
-    localparam [3:0] S_SEND_DATA3 = 4'd10;
-    localparam [3:0] S_WAIT_MAGIC = 4'd11;
-    localparam [3:0] S_RECV_STAT  = 4'd12;
-    localparam [3:0] S_RECV_DATA  = 4'd13;
-    localparam [3:0] S_DONE       = 4'd14;
-    localparam [3:0] S_DELIVER    = 4'd15;
+    localparam [4:0] S_IDLE       = 5'd0;
+    localparam [4:0] S_SEND_MAGIC = 5'd1;
+    localparam [4:0] S_SEND_CMD   = 5'd2;
+    localparam [4:0] S_SEND_ADDR0 = 5'd3;
+    localparam [4:0] S_SEND_ADDR1 = 5'd4;
+    localparam [4:0] S_SEND_ADDR2 = 5'd5;
+    localparam [4:0] S_SEND_ADDR3 = 5'd6;
+    localparam [4:0] S_SEND_DATA0 = 5'd7;
+    localparam [4:0] S_SEND_DATA1 = 5'd8;
+    localparam [4:0] S_SEND_DATA2 = 5'd9;
+    localparam [4:0] S_SEND_DATA3 = 5'd10;
+    localparam [4:0] S_WAIT_MAGIC = 5'd11;
+    localparam [4:0] S_RECV_STAT  = 5'd12;
+    localparam [4:0] S_RECV_DATA  = 5'd13;
+    localparam [4:0] S_DONE       = 5'd14;
+    localparam [4:0] S_DELIVER    = 5'd15;
 
-    reg[3:0] state;
+    reg[4:0] state;
     reg[1:0] recv_index;
-    reg target_ram;
+    reg target_ram;                 // 0 = ROM, 1 = RAM
     reg latched_we;
     reg[`MemAddrBus] latched_addr;
     reg[`MemBus] latched_wdata;
     reg[`MemBus] latched_rdata;
+    reg[`MemBus] rdata_o0;          // delivered read data, slave 0 (ROM)
+    reg[`MemBus] rdata_o1;          // delivered read data, slave 1 (RAM)
 
-    reg[31:0] ext_rom[0:255];
-    reg[31:0] ext_ram[0:15];
-    integer i;
-
-    wire s0_rom_hit = (s0_addr_i[31:10] == 22'h0);
-    wire s0_ram_alias_hit = (s0_addr_i[31:6] == 26'h3ffffff);
-
-    assign s0_data_o = s0_rom_hit ? ext_rom[s0_addr_i[9:2]] :
-                       (s0_ram_alias_hit ? ext_ram[s0_addr_i[5:2]] : `ZeroWord);
-    assign s1_data_o = (s1_addr_i[31:6] == 26'h0) ? ext_ram[s1_addr_i[5:2]] : `ZeroWord;
-    assign hold_flag_o = `HoldDisable;
+    assign s0_data_o = rdata_o0;
+    assign s1_data_o = rdata_o1;
+    assign s0_done_o = (state == S_DELIVER) && (target_ram == 1'b0);
+    assign s1_done_o = (state == S_DELIVER) && (target_ram == 1'b1);
 
     always @ (*) begin
         case (state)
@@ -86,20 +91,9 @@ module cpu2_mem_bridge(
             latched_addr <= `ZeroWord;
             latched_wdata <= `ZeroWord;
             latched_rdata <= `ZeroWord;
-            for (i = 0; i < 16; i = i + 1) begin
-                ext_ram[i] <= `ZeroWord;
-            end
+            rdata_o0 <= `ZeroWord;
+            rdata_o1 <= `ZeroWord;
         end else begin
-            if ((s0_req_i == `RIB_REQ) && (s0_we_i == `WriteEnable) && s0_rom_hit) begin
-                ext_rom[s0_addr_i[9:2]] <= s0_data_i;
-            end
-            if ((s0_req_i == `RIB_REQ) && (s0_we_i == `WriteEnable) && s0_ram_alias_hit) begin
-                ext_ram[s0_addr_i[5:2]] <= s0_data_i;
-            end
-            if ((s1_req_i == `RIB_REQ) && (s1_we_i == `WriteEnable) && (s1_addr_i[31:6] == 26'h0)) begin
-                ext_ram[s1_addr_i[5:2]] <= s1_data_i;
-            end
-
             case (state)
                 S_IDLE: begin
                     recv_index <= 2'h0;
@@ -141,9 +135,17 @@ module cpu2_mem_bridge(
                         2'd0: latched_rdata[31:24] <= ext_data_i;
                         2'd1: latched_rdata[23:16] <= ext_data_i;
                         2'd2: latched_rdata[15:8] <= ext_data_i;
-                        2'd3: latched_rdata[7:0] <= ext_data_i;
+                        2'd3: begin
+                            // deliver the completed word already on the last
+                            // data cycle: the CPU samples it on the
+                            // S_DELIVER edge, one cycle later
+                            if (target_ram == 1'b1) begin
+                                rdata_o1 <= {latched_rdata[31:8], ext_data_i};
+                            end else begin
+                                rdata_o0 <= {latched_rdata[31:8], ext_data_i};
+                            end
+                        end
                     endcase
-
                     if (recv_index == 2'd3) begin
                         state <= S_DONE;
                     end else begin

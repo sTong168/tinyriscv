@@ -48,46 +48,49 @@ module cpu2_id_ex(
 
     );
 
-    wire hold_en = (hold_flag_i >= `Hold_Id);
+    // cpu0-style dual-enable: clear -> NOP bubble, hold -> keep value
+    wire clear_en = (hold_flag_i == `Hold_Id_clr ||
+                     hold_flag_i == `Hold_If_keep_Id_clr);
+    wire hold_en = (hold_flag_i == `Hold_Id_keep);
 
     wire[`InstBus] inst;
-    cpu2_gen_pipe_dff #(32) inst_ff(clk, rst, hold_en, `INST_NOP, inst_i, inst);
+    cpu2_gen_pipe_dff #(32) inst_ff(clk, rst, clear_en, hold_en, `INST_NOP, inst_i, inst);
     assign inst_o = inst;
 
     wire[`InstAddrBus] inst_addr;
-    cpu2_gen_pipe_dff #(32) inst_addr_ff(clk, rst, hold_en, `ZeroWord, inst_addr_i, inst_addr);
+    cpu2_gen_pipe_dff #(32) inst_addr_ff(clk, rst, clear_en, hold_en, `ZeroWord, inst_addr_i, inst_addr);
     assign inst_addr_o = inst_addr;
 
     wire reg_we;
-    cpu2_gen_pipe_dff #(1) reg_we_ff(clk, rst, hold_en, `WriteDisable, reg_we_i, reg_we);
+    cpu2_gen_pipe_dff #(1) reg_we_ff(clk, rst, clear_en, hold_en, `WriteDisable, reg_we_i, reg_we);
     assign reg_we_o = reg_we;
 
     wire[`RegAddrBus] reg_waddr;
-    cpu2_gen_pipe_dff #(5) reg_waddr_ff(clk, rst, hold_en, `ZeroReg, reg_waddr_i, reg_waddr);
+    cpu2_gen_pipe_dff #(5) reg_waddr_ff(clk, rst, clear_en, hold_en, `ZeroReg, reg_waddr_i, reg_waddr);
     assign reg_waddr_o = reg_waddr;
 
     wire[`RegBus] reg1_rdata;
-    cpu2_gen_pipe_dff #(32) reg1_rdata_ff(clk, rst, hold_en, `ZeroWord, reg1_rdata_i, reg1_rdata);
+    cpu2_gen_pipe_dff #(32) reg1_rdata_ff(clk, rst, clear_en, hold_en, `ZeroWord, reg1_rdata_i, reg1_rdata);
     assign reg1_rdata_o = reg1_rdata;
 
     wire[`RegBus] reg2_rdata;
-    cpu2_gen_pipe_dff #(32) reg2_rdata_ff(clk, rst, hold_en, `ZeroWord, reg2_rdata_i, reg2_rdata);
+    cpu2_gen_pipe_dff #(32) reg2_rdata_ff(clk, rst, clear_en, hold_en, `ZeroWord, reg2_rdata_i, reg2_rdata);
     assign reg2_rdata_o = reg2_rdata;
 
     wire[`MemAddrBus] op1;
-    cpu2_gen_pipe_dff #(32) op1_ff(clk, rst, hold_en, `ZeroWord, op1_i, op1);
+    cpu2_gen_pipe_dff #(32) op1_ff(clk, rst, clear_en, hold_en, `ZeroWord, op1_i, op1);
     assign op1_o = op1;
 
     wire[`MemAddrBus] op2;
-    cpu2_gen_pipe_dff #(32) op2_ff(clk, rst, hold_en, `ZeroWord, op2_i, op2);
+    cpu2_gen_pipe_dff #(32) op2_ff(clk, rst, clear_en, hold_en, `ZeroWord, op2_i, op2);
     assign op2_o = op2;
 
     wire[`MemAddrBus] op1_jump;
-    cpu2_gen_pipe_dff #(32) op1_jump_ff(clk, rst, hold_en, `ZeroWord, op1_jump_i, op1_jump);
+    cpu2_gen_pipe_dff #(32) op1_jump_ff(clk, rst, clear_en, hold_en, `ZeroWord, op1_jump_i, op1_jump);
     assign op1_jump_o = op1_jump;
 
     wire[`MemAddrBus] op2_jump;
-    cpu2_gen_pipe_dff #(32) op2_jump_ff(clk, rst, hold_en, `ZeroWord, op2_jump_i, op2_jump);
+    cpu2_gen_pipe_dff #(32) op2_jump_ff(clk, rst, clear_en, hold_en, `ZeroWord, op2_jump_i, op2_jump);
     assign op2_jump_o = op2_jump;
 
 endmodule

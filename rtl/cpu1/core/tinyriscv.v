@@ -1,9 +1,9 @@
-`include "defines.v"
+`include "../core/defines.v"
 
-// tinyriscv processor core (backend / RV32I + custom, no M/CSR/CLINT/JTAG)
+// cpu1 core — RV32I + custom; regs are shared at 4cpu top
 module cpu1_tinyriscv(
-    input wire clk,
-    input wire rst,
+    input  wire clk,
+    input  wire rst,
 
     output wire[`MemAddrBus] rib_ex_addr_o,
     input  wire[`MemBus]     rib_ex_data_i,
@@ -14,8 +14,7 @@ module cpu1_tinyriscv(
     output wire[`MemAddrBus] rib_pc_addr_o,
     input  wire[`MemBus]     rib_pc_data_i,
 
-    input wire rib_hold_flag_i,
-
+    input  wire [1:0]        rib_hold_flag_i,
 
     output wire              custom_start_o,
     output wire [2:0]        custom_funct3_o,
@@ -28,7 +27,7 @@ module cpu1_tinyriscv(
     input  wire [31:0]       custom_result_i,
     input  wire [`RegAddrBus] custom_rd_waddr_i,
 
-    // shared regs interface
+    // shared regs (pass-through)
     output wire              reg_we_o,
     output wire[`RegAddrBus] reg_waddr_o,
     output wire[`RegBus]     reg_wdata_o,
@@ -39,7 +38,6 @@ module cpu1_tinyriscv(
 );
 
     wire[`InstAddrBus] pc_pc_o;
-
     wire[`InstBus] if_inst_o;
     wire[`InstAddrBus] if_inst_addr_o;
 
@@ -64,10 +62,8 @@ module cpu1_tinyriscv(
     wire[`RegBus] ex_reg_wdata_o;
     wire ex_reg_we_o;
     wire[`RegAddrBus] ex_reg_waddr_o;
-    wire ex_hold_flag_o, ex_jump_flag_o;
+    wire ex_hold_flag_o, ex_ls_flag_o, ex_jump_flag_o;
     wire[`InstAddrBus] ex_jump_addr_o;
-    wire[`RegAddrBus] ex_custom_rd_waddr_o;
-
 
     wire[`Hold_Flag_Bus] ctrl_hold_flag_o;
     wire ctrl_jump_flag_o;
@@ -79,16 +75,14 @@ module cpu1_tinyriscv(
     assign rib_ex_we_o   = ex_mem_we_o;
     assign rib_pc_addr_o = pc_pc_o;
 
-    // shared regs interface
-    assign reg_we_o = ex_reg_we_o;
-    assign reg_waddr_o = ex_reg_waddr_o;
-    assign reg_wdata_o = ex_reg_wdata_o;
+    assign reg_we_o     = ex_reg_we_o;
+    assign reg_waddr_o  = ex_reg_waddr_o;
+    assign reg_wdata_o  = ex_reg_wdata_o;
     assign reg_raddr1_o = id_reg1_raddr_o;
     assign reg_raddr2_o = id_reg2_raddr_o;
 
     cpu1_pc_reg u_pc_reg(
-        .clk(clk),
-        .rst(rst),
+        .clk(clk), .rst(rst),
         .pc_o(pc_pc_o),
         .hold_flag_i(ctrl_hold_flag_o),
         .jump_flag_i(ctrl_jump_flag_o),
@@ -96,9 +90,10 @@ module cpu1_tinyriscv(
     );
 
     cpu1_ctrl u_ctrl(
-        .rst(rst),
+        .clk(clk), .rst(rst),
         .jump_flag_i(ex_jump_flag_o),
         .jump_addr_i(ex_jump_addr_o),
+        .ls_flag_i(ex_ls_flag_o),
         .hold_flag_ex_i(ex_hold_flag_o),
         .hold_flag_rib_i(rib_hold_flag_i),
         .hold_flag_o(ctrl_hold_flag_o),
@@ -106,10 +101,8 @@ module cpu1_tinyriscv(
         .jump_addr_o(ctrl_jump_addr_o)
     );
 
-
     cpu1_if_id u_if_id(
-        .clk(clk),
-        .rst(rst),
+        .clk(clk), .rst(rst),
         .inst_i(rib_pc_data_i),
         .inst_addr_i(pc_pc_o),
         .hold_flag_i(ctrl_hold_flag_o),
@@ -139,18 +132,13 @@ module cpu1_tinyriscv(
     );
 
     cpu1_id_ex u_id_ex(
-        .clk(clk),
-        .rst(rst),
+        .clk(clk), .rst(rst),
         .inst_i(id_inst_o),
         .inst_addr_i(id_inst_addr_o),
         .reg_we_i(id_reg_we_o),
         .reg_waddr_i(id_reg_waddr_o),
         .reg1_rdata_i(id_reg1_rdata_o),
         .reg2_rdata_i(id_reg2_rdata_o),
-        .op1_i(id_op1_o),
-        .op2_i(id_op2_o),
-        .op1_jump_i(id_op1_jump_o),
-        .op2_jump_i(id_op2_jump_o),
         .hold_flag_i(ctrl_hold_flag_o),
         .inst_o(ie_inst_o),
         .inst_addr_o(ie_inst_addr_o),
@@ -158,6 +146,10 @@ module cpu1_tinyriscv(
         .reg_waddr_o(ie_reg_waddr_o),
         .reg1_rdata_o(ie_reg1_rdata_o),
         .reg2_rdata_o(ie_reg2_rdata_o),
+        .op1_i(id_op1_o),
+        .op2_i(id_op2_o),
+        .op1_jump_i(id_op1_jump_o),
+        .op2_jump_i(id_op2_jump_o),
         .op1_o(ie_op1_o),
         .op2_o(ie_op2_o),
         .op1_jump_o(ie_op1_jump_o),
@@ -186,6 +178,7 @@ module cpu1_tinyriscv(
         .reg_we_o(ex_reg_we_o),
         .reg_waddr_o(ex_reg_waddr_o),
         .hold_flag_o(ex_hold_flag_o),
+        .ls_flag_o(ex_ls_flag_o),
         .jump_flag_o(ex_jump_flag_o),
         .jump_addr_o(ex_jump_addr_o),
         .custom_start_o(custom_start_o),
@@ -193,7 +186,7 @@ module cpu1_tinyriscv(
         .custom_rs1_o(custom_rs1_o),
         .custom_rs2_o(custom_rs2_o),
         .custom_imm_o(custom_imm_o),
-        .custom_rd_waddr_o(ex_custom_rd_waddr_o),
+        .custom_rd_waddr_o(custom_rd_waddr_o),
         .custom_busy_i(custom_busy_i),
         .custom_done_i(custom_done_i),
         .custom_result_i(custom_result_i),

@@ -30,10 +30,10 @@ limitations under the License.
 `define ChipDisable 1'b0
 `define JumpEnable 1'b1
 `define JumpDisable 1'b0
-`define DivResultNotReady 1'b0
-`define DivResultReady 1'b1
-`define DivStart 1'b1
-`define DivStop 1'b0
+// `define DivResultNotReady 1'b0
+// `define DivResultReady 1'b1
+// `define DivStart 1'b1
+// `define DivStop 1'b0
 `define HoldEnable 1'b1
 `define HoldDisable 1'b0
 `define Stop 1'b1
@@ -42,20 +42,28 @@ limitations under the License.
 `define RIB_NACK 1'b0
 `define RIB_REQ 1'b1
 `define RIB_NREQ 1'b0
-`define INT_ASSERT 1'b1
-`define INT_DEASSERT 1'b0
+`define SEL_ROM 1'b0
+`define SEL_RAM 1'b1
+`define LSEnable 1'b1
+`define LSDisable 1'b0
+`define MEM_Start 4'b1010
+// `define INT_ASSERT 1'b1
+// `define INT_DEASSERT 1'b0
 
-`define INT_BUS 7:0
-`define INT_NONE 8'h0
-`define INT_RET 8'hff
-`define INT_TIMER0 8'b00000001
-`define INT_TIMER0_ENTRY_ADDR 32'h4
+// `define INT_BUS 7:0
+// `define INT_NONE 8'h0
+// `define INT_RET 8'hff
+// `define INT_TIMER0 8'b00000001
+// `define INT_TIMER0_ENTRY_ADDR 32'h4
 
 `define Hold_Flag_Bus   2:0
-`define Hold_None 3'b000
-`define Hold_Pc   3'b001
-`define Hold_If   3'b010
-`define Hold_Id   3'b011
+`define Hold_None       3'b000
+`define Hold_Pc         3'b001
+`define Hold_If_keep    3'b010
+`define Hold_Id_keep    3'b011
+`define Hold_If_keep_Id_clr 3'b100
+`define Hold_If_clr     3'b110
+`define Hold_Id_clr     3'b111
 
 // I type inst
 `define INST_TYPE_I 7'b0010011
@@ -93,15 +101,15 @@ limitations under the License.
 `define INST_SR     3'b101
 `define INST_OR     3'b110
 `define INST_AND    3'b111
-// M type inst
-`define INST_MUL    3'b000
-`define INST_MULH   3'b001
-`define INST_MULHSU 3'b010
-`define INST_MULHU  3'b011
-`define INST_DIV    3'b100
-`define INST_DIVU   3'b101
-`define INST_REM    3'b110
-`define INST_REMU   3'b111
+// M type inst (stripped)
+// `define INST_MUL    3'b000
+// `define INST_MULH   3'b001
+// `define INST_MULHSU 3'b010
+// `define INST_MULHU  3'b011
+// `define INST_DIV    3'b100
+// `define INST_DIVU   3'b101
+// `define INST_REM    3'b110
+// `define INST_REMU   3'b111
 
 // J type inst
 `define INST_JAL    7'b1101111
@@ -127,24 +135,24 @@ limitations under the License.
 `define INST_BLTU   3'b110
 `define INST_BGEU   3'b111
 
-// CSR inst
-`define INST_CSR    7'b1110011
-`define INST_CSRRW  3'b001
-`define INST_CSRRS  3'b010
-`define INST_CSRRC  3'b011
-`define INST_CSRRWI 3'b101
-`define INST_CSRRSI 3'b110
-`define INST_CSRRCI 3'b111
+// CSR inst (stripped)
+// `define INST_CSR    7'b1110011
+// `define INST_CSRRW  3'b001
+// `define INST_CSRRS  3'b010
+// `define INST_CSRRC  3'b011
+// `define INST_CSRRWI 3'b101
+// `define INST_CSRRSI 3'b110
+// `define INST_CSRRCI 3'b111
 
-// CSR reg addr
-`define CSR_CYCLE   12'hc00
-`define CSR_CYCLEH  12'hc80
-`define CSR_MTVEC   12'h305
-`define CSR_MCAUSE  12'h342
-`define CSR_MEPC    12'h341
-`define CSR_MIE     12'h304
-`define CSR_MSTATUS 12'h300
-`define CSR_MSCRATCH 12'h340
+// CSR reg addr (stripped)
+// `define CSR_CYCLE   12'hc00
+// `define CSR_CYCLEH  12'hc80
+// `define CSR_MTVEC   12'h305
+// `define CSR_MCAUSE  12'h342
+// `define CSR_MEPC    12'h341
+// `define CSR_MIE     12'h304
+// `define CSR_MSTATUS 12'h300
+// `define CSR_MSCRATCH 12'h340
 
 `define RomNum 256   // rom depth (words): 1KB
 `define MemNum 16    // ram depth (words): 64B
@@ -154,6 +162,8 @@ limitations under the License.
 
 `define InstBus 31:0
 `define InstAddrBus 31:0
+
+`define BridgeBus 15:0
 
 // common regs
 `define RegAddrBus 4:0
@@ -170,12 +180,3 @@ limitations under the License.
 `define INST_CUSTOM_IF      3'h2   // IF:       integrate-and-fire neuron model
 `define INST_CUSTOM_POPCNT  3'h3   // popcount: count set bits in rs1, write to rd
 
-// EMIF-8: 16-wire (8 out + 8 in), in-band handshake (no req/ack pins)
-// Frame: MAGIC(0xA5) -> CMD{6'b0,memsel,we} -> ADDR×4(MSB first) -> DATA×4(MSB first)
-// Reply: ACK(0x5A) [-> RDATA×4 on read]. Shared clock with FPGA; ACK is level-sampled.
-`define EMIF_IDLE           8'h00
-`define EMIF_MAGIC          8'hA5
-`define EMIF_ACK            8'h5A
-`define EMIF_ROM            1'b0
-`define EMIF_RAM            1'b1
-`define EMIF_MAGIC_LOCK     32'hDEAD_BEEF  // write to RAM word 15 to lock ROM

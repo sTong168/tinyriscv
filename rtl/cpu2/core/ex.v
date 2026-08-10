@@ -58,6 +58,7 @@ module cpu2_ex(
 
     // to ctrl
     output wire hold_flag_o,                // 是否暂停标志
+    output wire ls_flag_o,                  // 是否访存标志（load/store）
     output wire jump_flag_o,                // 是否跳转标志
     output wire[`InstAddrBus] jump_addr_o   // 跳转目的地址
 
@@ -158,6 +159,7 @@ module cpu2_ex(
     assign mem_req_o = mem_req;
 
     assign hold_flag_o = hold_flag;
+    assign ls_flag_o = (opcode == `INST_TYPE_L) || (opcode == `INST_TYPE_S);
     assign jump_flag_o = jump_flag;
     assign jump_addr_o = jump_addr;
 

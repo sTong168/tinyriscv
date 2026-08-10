@@ -43,18 +43,23 @@ module cpu2_rib(
     output reg[`MemBus] m3_data_o,
     input wire m3_req_i,
     input wire m3_we_i,
+    output reg m3_ack_o,                     // completed access for master 3
 
     // slave 0 interface (ROM via mem_bridge, 0x0000_0000)
     output reg[`MemAddrBus] s0_addr_o,
     output reg[`MemBus] s0_data_o,
     input wire[`MemBus] s0_data_i,
     output reg s0_we_o,
+    output wire s0_req_o,                    // arbitrated request to ROM bridge
+    input wire s0_done_i,                    // ROM bridge transaction done
 
     // slave 1 interface (RAM via mem_bridge, 0x1000_0000)
     output reg[`MemAddrBus] s1_addr_o,
     output reg[`MemBus] s1_data_o,
     input wire[`MemBus] s1_data_i,
     output reg s1_we_o,
+    output wire s1_req_o,                    // arbitrated request to RAM bridge
+    input wire s1_done_i,                    // RAM bridge transaction done
 
     // slave 3 interface (UART, 0x3000_0000)
     output reg[`MemAddrBus] s3_addr_o,
@@ -74,7 +79,10 @@ module cpu2_rib(
     input wire[`MemBus] s7_data_i,
     output reg s7_we_o,
 
-    output reg hold_flag_o                 // 暂停流水线标志
+    // hold_flag_o[1]: master 仲裁等待（暂停取指）
+    // hold_flag_o[0]: slave 外部存储事务未完成（冻结流水线）
+    output reg  hold_flag_m,
+    output wire hold_flag_s
 
     );
 
@@ -102,21 +110,61 @@ module cpu2_rib(
     always @ (*) begin
         if (req[2]) begin
             grant = grant3;
-            hold_flag_o = `HoldEnable;
+            hold_flag_m = `HoldEnable;
         end else if (req[0]) begin
             grant = grant0;
-            hold_flag_o = `HoldEnable;
+            hold_flag_m = `HoldEnable;
         end else begin
             grant = grant1;
-            hold_flag_o = `HoldDisable;
+            hold_flag_m = `HoldDisable;
         end
     end
+
+    // 根据仲裁结果，指出本次访问是否指向外部存储（ROM/RAM），
+    // 并在事务未完成时拉高 ext_hold（等价于 cpu0 的 slave-hold）
+    reg s0_req_r;
+    reg s1_req_r;
+    always @ (*) begin
+        s0_req_r = 1'b0;
+        s1_req_r = 1'b0;
+        case (grant)
+            grant0: begin
+                case (m0_addr_i[31:28])
+                    slave_0: s0_req_r = m0_req_i;
+                    slave_1: s1_req_r = m0_req_i;
+                    default: ;
+                endcase
+            end
+            grant1: begin
+                case (m1_addr_i[31:28])
+                    slave_0: s0_req_r = m1_req_i;
+                    slave_1: s1_req_r = m1_req_i;
+                    default: ;
+                endcase
+            end
+            grant3: begin
+                case (m3_addr_i[31:28])
+                    slave_0: s0_req_r = m3_req_i;
+                    slave_1: s1_req_r = m3_req_i;
+                    default: ;
+                endcase
+            end
+            default: ;
+        endcase
+    end
+
+    assign s0_req_o = s0_req_r;
+    assign s1_req_o = s1_req_r;
+    // slave hold: 仲裁到外部存储且事务未完成（等价于 cpu0 的 hold_flag_s）
+    assign hold_flag_s = (s0_req_r && !s0_done_i) ||
+                         (s1_req_r && !s1_done_i);
 
     // 根据仲裁结果，选择对应的从设备
     always @ (*) begin
         m0_data_o = `ZeroWord;
         m1_data_o = `INST_NOP;
         m3_data_o = `ZeroWord;
+        m3_ack_o = `RIB_NACK;
 
         s0_addr_o = `ZeroWord;
         s1_addr_o = `ZeroWord;
@@ -216,30 +264,35 @@ module cpu2_rib(
                         s0_addr_o = {{4'h0}, {m3_addr_i[27:0]}};
                         s0_data_o = m3_data_i;
                         m3_data_o = s0_data_i;
+                        m3_ack_o = s0_done_i;
                     end
                     slave_1: begin
                         s1_we_o = m3_we_i;
                         s1_addr_o = {{4'h0}, {m3_addr_i[27:0]}};
                         s1_data_o = m3_data_i;
                         m3_data_o = s1_data_i;
+                        m3_ack_o = s1_done_i;
                     end
                     slave_3: begin
                         s3_we_o = m3_we_i;
                         s3_addr_o = {{4'h0}, {m3_addr_i[27:0]}};
                         s3_data_o = m3_data_i;
                         m3_data_o = s3_data_i;
+                        m3_ack_o = `RIB_ACK;
                     end
                     slave_6: begin
                         s6_we_o = m3_we_i;
                         s6_addr_o = {{4'h0}, {m3_addr_i[27:0]}};
                         s6_data_o = m3_data_i;
                         m3_data_o = s6_data_i;
+                        m3_ack_o = `RIB_ACK;
                     end
                     slave_7: begin
                         s7_we_o = m3_we_i;
                         s7_addr_o = {{4'h0}, {m3_addr_i[27:0]}};
                         s7_data_o = m3_data_i;
                         m3_data_o = s7_data_i;
+                        m3_ack_o = `RIB_ACK;
                     end
                     default: begin
 
