@@ -14,33 +14,36 @@
  limitations under the License.                                          
  */
 
-// 将输入打DP拍后输出
-module cpu2_gen_ticks_sync #(
-    parameter DP = 2,
-    parameter DW = 32)(
+`include "../core/defines.v"
 
-    input wire rst,
+
+module rom(
+
     input wire clk,
+    input wire rst,
 
-    input wire[DW-1:0] din,
-    output wire[DW-1:0] dout
+    input wire we_i,
+    input wire[`MemAddrBus] addr_i,
+    input wire[`MemBus] data_i,
+
+    output reg[`MemBus] data_o
 
     );
 
-    wire[DW-1:0] sync_dat[DP-1:0];
+    reg[`MemBus] _rom[0:`RomNum - 1];
 
-    genvar i;
-
-    generate 
-        for (i = 0; i < DP; i = i + 1) begin: dp_width
-            if (i == 0) begin: dp_is_0
-                cpu2_gen_rst_0_dff #(DW) rst_0_dff(clk, rst, din, sync_dat[0]);
-            end else begin: dp_is_not_0
-                cpu2_gen_rst_0_dff #(DW) rst_0_dff(clk, rst, sync_dat[i-1], sync_dat[i]);
-            end
+    always @ (posedge clk) begin
+        if (we_i == `WriteEnable) begin
+            _rom[addr_i[31:2]] <= data_i;
         end
-    endgenerate
+    end
 
-    assign dout = sync_dat[DP-1];
-  
+    always @ (*) begin
+        if (rst == `RstEnable) begin
+            data_o = `ZeroWord;
+        end else begin
+            data_o = _rom[addr_i[31:2]];
+        end
+    end
+
 endmodule

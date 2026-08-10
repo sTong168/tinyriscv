@@ -31,18 +31,11 @@ rtl/cpu0/perips/bridge.v
 rtl/cpu0/perips/i2c.v
 rtl/cpu0/perips/uart.v
 # rtl/cpu0/perips/pwm.v           (shared: rtl/shared/pwm.v)
-rtl/cpu0/perips/bridge_fpga.v
-rtl/cpu0/perips/ram.v
-rtl/cpu0/perips/rom.v
-# rtl/cpu0/debug/uart_debug.v   (shared: rtl/shared/uart_debug.v)
 rtl/cpu0/utils/gen_dff.v
-rtl/cpu0/soc/tinyriscv_soc_top_pad.v
+rtl/cpu0/soc/tinyriscv_soc_top.v
 
 # ---- CPU1 (王子阳) ----
 rtl/cpu1/soc/tinyriscv_soc_top.v
-rtl/cpu1/soc/ext_mem_port.v
-rtl/cpu1/soc/mem_bridge_master.v
-rtl/cpu1/soc/ifetch_line_buf.v
 rtl/cpu1/core/tinyriscv.v
 rtl/cpu1/core/ctrl.v
 rtl/cpu1/core/ex.v
@@ -57,11 +50,9 @@ rtl/cpu1/perips/i2c.v
 # rtl/cpu1/perips/pwm.v           (shared: rtl/shared/pwm.v)
 rtl/cpu1/perips/lfsr.v
 rtl/cpu1/perips/custom_inst.v
+rtl/cpu1/perips/bridge.v
 # rtl/cpu1/debug/uart_debug.v   (shared: rtl/shared/uart_debug.v)
 rtl/cpu1/utils/gen_dff.v
-rtl/cpu1/utils/gen_buf.v
-rtl/cpu1/utils/full_handshake_tx.v
-rtl/cpu1/utils/full_handshake_rx.v
 
 # ---- CPU2 ----
 rtl/cpu2/soc/tinyriscv_soc_top.v
@@ -100,9 +91,18 @@ rtl/cpu3/perips/sID.v
 rtl/cpu3/perips/sendif.v
 # rtl/cpu3/debug/uart_debug.v   (shared: rtl/shared/uart_debug.v)
 rtl/cpu3/utils/gen_dff.v
-rtl/cpu3/utils/gen_buf.v
-rtl/cpu3/utils/full_handshake_tx.v
-rtl/cpu3/utils/full_handshake_rx.v
+
+# ---- FPGA bridge simulation models ----
+# cpu0/cpu1: 16-bit bridge_fpga (shared instance, both use same module name)
+rtl/fpga/cpu0/bridge_fpga.v
+rtl/fpga/cpu0/ram.v
+rtl/fpga/cpu0/rom.v
+# cpu2: 8-bit bridge (self-contained)
+rtl/fpga/cpu2/bridge_fpga.v
+# cpu3: 8-bit bridge with external rom/ram
+rtl/fpga/cpu3/fpga_bridge_top.v
+rtl/fpga/cpu3/external_ram.v
+rtl/fpga/cpu3/external_rom.v
 
 # ---- 4-CPU top + IO wrapper (includes tb separately in Makefile) ----
 rtl/tinyriscv_4cpu_top.v

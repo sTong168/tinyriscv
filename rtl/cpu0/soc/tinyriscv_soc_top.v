@@ -1,7 +1,7 @@
 `include "../core/defines.v"
 
-// tinyriscv soc顶层模块
-module cpu0_tinyriscv_soc_top(
+// tinyriscv soc顶层模块(pad版，流片用：双向口拆分为_in/_o/_oe)
+module cpu0_tinyriscv_soc_top_pad(
 
     input wire clk,
     input wire rst,
@@ -9,10 +9,16 @@ module cpu0_tinyriscv_soc_top(
     output wire uart_tx_pin, // UART发送引脚
     input wire uart_rx_pin,  // UART接收引脚
 
-    inout wire [`BridgeBus] bridge, // Bridge 通信总线
+    input  wire [`BridgeBus] bridge_in,
+    output wire [`BridgeBus] bridge_o,
+    output wire              bridge_oe,
 
-    inout wire scl,          // I2C SCL
-    inout wire sda,          // I2C SDA
+    input  wire            scl_in,
+    output wire            scl_o,
+    output wire            scl_oe,
+    input  wire            sda_in,
+    output wire            sda_o,
+    output wire            sda_oe,
 
     // shared regs interface (pass-through)
     output wire              reg_we_o,
@@ -138,7 +144,9 @@ module cpu0_tinyriscv_soc_top(
     .we_i(s0_we_o),
     .req_i(s0_req_o),
     .ack_o(s0_ack_i),
-    .bridge_io(bridge)
+    .bridge_o(bridge_o),
+    .bridge_oe(bridge_oe),
+    .bridge_in(bridge_in)
   );
 
     // i2c模块例化
@@ -150,8 +158,12 @@ module cpu0_tinyriscv_soc_top(
         .we_i(s2_we_o),
         .data_o(s2_data_i),
         .req_i(s2_req_o),
-        .scl(scl),
-        .sda(sda)
+        .scl_in(scl_in),
+        .scl_o(scl_o),
+        .scl_oe(scl_oe),
+        .sda_in(sda_in),
+        .sda_o(sda_o),
+        .sda_oe(sda_oe)
     );
 
     // uart模块例化
@@ -236,7 +248,7 @@ module cpu0_tinyriscv_soc_top(
         .hold_flag_o(rib_hold_flag_o)
     );
 
-    // shared uart_debug bus pass-through
+    // debug bus: shared uart_debug -> RIB master 3
     assign m3_req_i = dbg_req_i;
     assign m3_we_i = dbg_we_i;
     assign m3_addr_i = dbg_addr_i;
@@ -244,7 +256,7 @@ module cpu0_tinyriscv_soc_top(
     assign dbg_rdata_o = m3_data_o;
     assign dbg_ack_o = m3_ack_o;
 
-    // shared PWM bus pass-through
+    // PWM bus: RIB slave 6 -> shared PWM
     assign pwm_we_o = s6_we_o;
     assign pwm_addr_o = s6_addr_o;
     assign pwm_data_o = s6_data_o;

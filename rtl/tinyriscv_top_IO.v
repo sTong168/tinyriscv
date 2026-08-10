@@ -1,4 +1,4 @@
-`include "cpu0/core/defines.v"
+`include "core/defines.v"
 
 module tinyriscv_top_IO (
 

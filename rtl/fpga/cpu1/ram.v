@@ -1,5 +1,5 @@
  /*                                                                      
- Copyright 2020 Blue Liang, liangkangnan@163.com
+ Copyright 2019 Blue Liang, liangkangnan@163.com
                                                                          
  Licensed under the Apache License, Version 2.0 (the "License");         
  you may not use this file except in compliance with the License.        
@@ -14,33 +14,35 @@
  limitations under the License.                                          
  */
 
-// 将输入打DP拍后输出
-module gen_ticks_sync #(
-    parameter DP = 2,
-    parameter DW = 32)(
+`include "../core/defines.v"
 
-    input wire rst,
+module ram(
+
     input wire clk,
+    input wire rst,
 
-    input wire[DW-1:0] din,
-    output wire[DW-1:0] dout
+    input wire we_i,
+    input wire[`MemAddrBus] addr_i,
+    input wire[`MemBus] data_i,
+
+    output reg[`MemBus] data_o
 
     );
 
-    wire[DW-1:0] sync_dat[DP-1:0];
+    reg[`MemBus] _ram[0:`MemNum - 1];
 
-    genvar i;
-
-    generate 
-        for (i = 0; i < DP; i = i + 1) begin: dp_width
-            if (i == 0) begin: dp_is_0
-                gen_rst_0_dff #(DW) rst_0_dff(clk, rst, din, sync_dat[0]);
-            end else begin: dp_is_not_0
-                gen_rst_0_dff #(DW) rst_0_dff(clk, rst, sync_dat[i-1], sync_dat[i]);
-            end
+    always @ (posedge clk) begin
+        if (we_i == `WriteEnable) begin
+            _ram[addr_i[31:2]] <= data_i;
         end
-    endgenerate
+    end
 
-    assign dout = sync_dat[DP-1];
-  
+    always @ (*) begin
+        if (rst == `RstEnable) begin
+            data_o = `ZeroWord;
+        end else begin
+            data_o = _ram[addr_i[31:2]];
+        end
+    end
+
 endmodule

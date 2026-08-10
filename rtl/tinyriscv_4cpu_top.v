@@ -1,4 +1,4 @@
-`include "cpu0/core/defines.v"
+`include "core/defines.v"
 
 // 4-CPU tinyriscv SOC top module
 // - chip_sel[1:0] selects active CPU (only selected CPU gets clock)
