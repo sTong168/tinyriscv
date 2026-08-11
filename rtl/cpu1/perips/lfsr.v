@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // 32-bit Fibonacci LFSR — hardware random number generator
 // Slave address: 0x2000_0000  (slave 2 on RIB bus)

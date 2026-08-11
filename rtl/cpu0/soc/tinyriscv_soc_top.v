@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // tinyriscv soc顶层模块(pad版，流片用：双向口拆分为_in/_o/_oe)
 module cpu0_tinyriscv_soc_top_pad(

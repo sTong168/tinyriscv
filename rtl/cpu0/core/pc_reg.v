@@ -14,7 +14,7 @@
  limitations under the License.                                          
  */
 
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // PC寄存器模块
 module pc_reg(

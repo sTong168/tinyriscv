@@ -6,7 +6,7 @@
 //   0x7003_0008: 接收数据寄存器高字节(无触发) (RX_DATA_RO) [7:0]
 //   0x7005_0000: STATUS (RO) [7:0] = {done, busy, err, state[4:0]}
 
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 module cpu2_i2c (
     input  wire        clk,

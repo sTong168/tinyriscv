@@ -14,7 +14,7 @@
  limitations under the License.
  */
 
-`include "defines.v"
+`include "../../shared/defines.v"
 `define UART_TX_REG             32'h3000000C
 `define UART_STATUS_REG         32'h30000004
 `define I2C_TX_REG              32'h70020000

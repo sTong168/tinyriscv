@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // FPGA-side data RAM. The address selects one of sixteen 32-bit words.
 module external_ram(

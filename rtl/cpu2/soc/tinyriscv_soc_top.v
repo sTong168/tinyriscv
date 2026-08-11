@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // tinyriscv soc顶层模块
 module cpu2_tinyriscv_soc_top(

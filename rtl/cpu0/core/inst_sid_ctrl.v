@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // UART发送模块
 // 用于实现自定义指令的UART发送功能

@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // FPGA-side external ROM image. The image is writable by uart_debug during
 // firmware download and is read by both instruction and data transactions.

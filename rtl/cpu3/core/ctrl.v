@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // Pipeline control for branches, memory stalls, and EX stalls.
 module cpu3_ctrl(

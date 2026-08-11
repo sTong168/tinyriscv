@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // FPGA-side bridge to interoperate with chip mem_bridge via 8-bit handshake
 module cpu2_bridge_fpga (

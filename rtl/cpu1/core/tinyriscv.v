@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // cpu1 core — RV32I + custom; regs are shared at 4cpu top
 module cpu1_tinyriscv(
@@ -64,6 +64,13 @@ module cpu1_tinyriscv(
     wire[`RegAddrBus] ex_reg_waddr_o;
     wire ex_hold_flag_o, ex_ls_flag_o, ex_jump_flag_o;
     wire[`InstAddrBus] ex_jump_addr_o;
+
+    wire i2c_busy, i2c_we, i2c_req, i2c_start;
+    wire[`MemBus] i2c_wdata;
+    wire[`MemAddrBus] i2c_addr;
+    wire i2c_reg_we;
+    wire[`RegAddrBus] i2c_reg_waddr;
+    wire[`RegBus] i2c_reg_wdata;
 
     wire[`Hold_Flag_Bus] ctrl_hold_flag_o;
     wire ctrl_jump_flag_o;
@@ -190,7 +197,32 @@ module cpu1_tinyriscv(
         .custom_busy_i(custom_busy_i),
         .custom_done_i(custom_done_i),
         .custom_result_i(custom_result_i),
-        .custom_rd_waddr_i(custom_rd_waddr_i)
+        .custom_rd_waddr_i(custom_rd_waddr_i),
+        .i2c_busy_i(i2c_busy),
+        .i2c_wdata_i(i2c_wdata),
+        .i2c_addr_i(i2c_addr),
+        .i2c_we_i(i2c_we),
+        .i2c_req_i(i2c_req),
+        .i2c_reg_we_i(i2c_reg_we),
+        .i2c_reg_waddr_i(i2c_reg_waddr),
+        .i2c_reg_wdata_i(i2c_reg_wdata),
+        .i2c_start_o(i2c_start)
+    );
+
+    cpu1_inst_rt_ctrl u_inst_rt_ctrl(
+        .clk(clk),
+        .rst(rst),
+        .start_i(i2c_start),
+        .mem_rdata_i(rib_ex_data_i),
+        .reg_waddr_i(ie_reg_waddr_o),
+        .busy_o(i2c_busy),
+        .addr_o(i2c_addr),
+        .wdata_o(i2c_wdata),
+        .we_o(i2c_we),
+        .req_o(i2c_req),
+        .reg_we_o(i2c_reg_we),
+        .reg_waddr_o(i2c_reg_waddr),
+        .reg_wdata_o(i2c_reg_wdata)
     );
 
 endmodule

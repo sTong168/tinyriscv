@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // cpu1 SoC — 16-bit pad bridge + shared regs/pwm/uart_debug (4cpu packaging)
 module cpu1_tinyriscv_soc_top(
@@ -63,16 +63,15 @@ module cpu1_tinyriscv_soc_top(
     wire        custom_busy, custom_done;
     wire [31:0] custom_result;
     wire        custom_uart_tx, custom_uart_busy;
-    wire        custom_i2c_scl, custom_i2c_sda, custom_i2c_sda_oe;
     wire        bus_i2c_scl, bus_i2c_sda, bus_i2c_sda_oe;
 
     wire uart_main_tx;
     assign uart_tx_pin = custom_uart_busy ? custom_uart_tx : uart_main_tx;
 
-    wire scl_line = custom_i2c_scl & bus_i2c_scl;
-    wire sda_drive_low = (custom_i2c_sda_oe & ~custom_i2c_sda) | (bus_i2c_sda_oe & ~bus_i2c_sda);
+    // I2C：仅 cpu1_i2c 外设驱动（rT 经总线访问）
+    wire sda_drive_low = bus_i2c_sda_oe & ~bus_i2c_sda;
     assign scl_o  = 1'b0;
-    assign scl_oe = ~scl_line;
+    assign scl_oe = ~bus_i2c_scl;
     assign sda_o  = 1'b0;
     assign sda_oe = sda_drive_low;
     wire _scl_in_unused = scl_in;
@@ -168,11 +167,7 @@ module cpu1_tinyriscv_soc_top(
         .result_o(custom_result),
         .rd_addr_o(custom_rd_waddr_stored),
         .uart_tx_o(custom_uart_tx),
-        .uart_busy_o(custom_uart_busy),
-        .i2c_scl_o(custom_i2c_scl),
-        .i2c_sda_o(custom_i2c_sda),
-        .i2c_sda_oe_o(custom_i2c_sda_oe),
-        .i2c_sda_i(sda_in)
+        .uart_busy_o(custom_uart_busy)
     );
 
     cpu1_rib u_rib(

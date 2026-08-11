@@ -14,7 +14,7 @@
  limitations under the License.                                          
  */
 
-`include "../core/defines.v"
+`include "defines.v"
 
 // 通用寄存器模块
 module shared_regs(

@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // IF指令UART发送控制模块
 // 用于实现IF指令imm==0且x[rs1]>=x31时的单字节UART发送

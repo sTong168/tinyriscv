@@ -14,7 +14,7 @@
  limitations under the License.                                          
  */
 
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // 执行模块
 // 纯组合逻辑电路
@@ -55,18 +55,28 @@ module cpu1_ex(
     output wire jump_flag_o,                // 是否跳转标志
     output wire[`InstAddrBus] jump_addr_o,  // 跳转目的地址
 
-    // custom instruction interface
-    output wire custom_start_o,             // 1 = custom instruction in EX stage
-    output wire [2:0] custom_funct3_o,      // funct3 of custom instruction
-    output wire [31:0] custom_rs1_o,        // rs1 value
-    output wire [31:0] custom_rs2_o,        // rs2 value (x31 for IF)
-    output wire [11:0] custom_imm_o,        // sign-extended immediate
-    output wire [`RegAddrBus] custom_rd_waddr_o, // rd address → cpu1_custom_inst for storage
-    input wire custom_busy_i,               // 1 = I2C running
-    input wire custom_done_i,               // 1 = I2C done (one-clock pulse)
-    input wire [31:0] custom_result_i,      // temperature result
-    input wire [`RegAddrBus] custom_rd_waddr_i   // stored rd address from cpu1_custom_inst
+    // custom instruction interface (sID / IF — rT 走 i2c 外设)
+    output wire custom_start_o,
+    output wire [2:0] custom_funct3_o,
+    output wire [31:0] custom_rs1_o,
+    output wire [31:0] custom_rs2_o,
+    output wire [11:0] custom_imm_o,
+    output wire [`RegAddrBus] custom_rd_waddr_o,
+    input wire custom_busy_i,
+    input wire custom_done_i,
+    input wire [31:0] custom_result_i,
+    input wire [`RegAddrBus] custom_rd_waddr_i,
 
+    // rT → cpu1_inst_rt_ctrl → cpu1_i2c
+    input wire i2c_busy_i,
+    input wire[`MemBus] i2c_wdata_i,
+    input wire[`MemAddrBus] i2c_addr_i,
+    input wire i2c_we_i,
+    input wire i2c_req_i,
+    input wire i2c_reg_we_i,
+    input wire[`RegAddrBus] i2c_reg_waddr_i,
+    input wire[`RegBus] i2c_reg_wdata_i,
+    output reg i2c_start_o
     );
 
     wire[1:0] mem_raddr_index;
@@ -123,23 +133,23 @@ module cpu1_ex(
     assign mem_raddr_index = (reg1_rdata_i + {{20{inst_i[31]}}, inst_i[31:20]}) & 2'b11;
     assign mem_waddr_index = (reg1_rdata_i + {{20{inst_i[31]}}, inst_i[31:25], inst_i[11:7]}) & 2'b11;
 
-    // custom instruction output signals (combinational)
-    assign custom_start_o     = (opcode == `INST_TYPE_CUSTOM);
+    // sID/IF 仍进 custom_inst；rT 不进（由 i2c 外设完成）
+    assign custom_start_o     = (opcode == `INST_TYPE_CUSTOM) && (funct3 != `INST_CUSTOM_RT);
     assign custom_funct3_o    = funct3;
     assign custom_rs1_o       = reg1_rdata_i;
     assign custom_rs2_o       = reg2_rdata_i;
     assign custom_imm_o       = inst_i[31:20];
     assign custom_rd_waddr_o  = reg_waddr_i;
 
-    assign reg_wdata_o = reg_wdata | custom_wdata;
-    assign reg_we_o = reg_we || custom_we;
-    assign reg_waddr_o = reg_waddr | custom_waddr;
+    assign reg_wdata_o = reg_wdata | custom_wdata | i2c_reg_wdata_i;
+    assign reg_we_o = reg_we || custom_we || i2c_reg_we_i;
+    assign reg_waddr_o = reg_waddr | custom_waddr | i2c_reg_waddr_i;
 
     assign mem_we_o = mem_we;
     assign mem_req_o = mem_req;
 
-    assign hold_flag_o = hold_flag || custom_hold_flag;
-    assign ls_flag_o = ls_flag;
+    assign hold_flag_o = hold_flag || custom_hold_flag || (i2c_busy_i == `True);
+    assign ls_flag_o = ls_flag || (i2c_busy_i == `True);
     assign jump_flag_o = jump_flag || custom_jump_flag;
     assign jump_addr_o = jump_addr | custom_jump_addr;
 
@@ -149,6 +159,7 @@ module cpu1_ex(
         reg_waddr = reg_waddr_i;
         mem_req = `RIB_NREQ;
         ls_flag = `LSDisable;
+        i2c_start_o = `False;
 
         case (opcode)
             `INST_TYPE_I: begin
@@ -661,7 +672,8 @@ module cpu1_ex(
                         reg_wdata   = `ZeroWord;
                     end
                     `INST_CUSTOM_RT: begin
-                        // hold_flag managed by custom_hold_flag below
+                        // 启动 cpu1_inst_rt_ctrl，经总线访问 cpu1_i2c
+                        i2c_start_o = `True;
                         hold_flag   = `HoldDisable;
                         reg_wdata   = `ZeroWord;
                     end
@@ -719,9 +731,18 @@ module cpu1_ex(
                 reg_wdata = `ZeroWord;
             end
         endcase
+
+        // rT 忙：总线交给 cpu1_inst_rt_ctrl
+        if (i2c_busy_i == `True) begin
+            mem_req    = i2c_req_i;
+            mem_we     = i2c_we_i;
+            mem_raddr_o = i2c_addr_i;
+            mem_waddr_o = i2c_addr_i;
+            mem_wdata_o = i2c_wdata_i;
+        end
     end
 
-    // custom instruction hold / result write-back
+    // custom（sID/IF）遗留 busy/done；rT 已不走此路径
     always @ (*) begin
         custom_jump_flag = `JumpDisable;
         custom_jump_addr = `ZeroWord;
@@ -730,19 +751,9 @@ module cpu1_ex(
         custom_wdata     = `ZeroWord;
         custom_waddr     = `ZeroReg;
 
-        // rT enters EX: jump past it + stall
-        if (opcode == `INST_TYPE_CUSTOM && funct3 == `INST_CUSTOM_RT) begin
-            custom_jump_flag = `JumpEnable;
-            custom_jump_addr = inst_addr_i + 32'h4;
-            custom_hold_flag = `HoldEnable;
-        end
-
-        // I2C still running (opcode-independent, NOP is in EX during stall)
         if (custom_busy_i == `True) begin
             custom_hold_flag = `HoldEnable;
         end
-
-        // I2C done (opcode-independent, NOP still in EX on done cycle)
         if (custom_done_i == `True) begin
             custom_hold_flag = `HoldDisable;
             custom_we    = `WriteEnable;

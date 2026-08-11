@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // Fixed-priority interconnect with one external-memory slave.
 // Region 0/1 are external ROM/RAM, region 3 is UART, region 4 is I2C,

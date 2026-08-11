@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // IF/ID pipeline register.
 module cpu3_if_id(

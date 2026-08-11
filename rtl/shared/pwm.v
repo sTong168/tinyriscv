@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "defines.v"
 
 
 // PWM模块

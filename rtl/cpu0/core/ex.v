@@ -14,7 +14,7 @@
  limitations under the License.
  */
 
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // 执行模块
 // 纯组合逻辑电路

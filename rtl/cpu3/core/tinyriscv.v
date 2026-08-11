@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // RV32I core with explicit completion handling for external accesses.
 module cpu3_tinyriscv(

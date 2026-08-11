@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // RV32I execute and memory stage.
 module cpu3_ex(

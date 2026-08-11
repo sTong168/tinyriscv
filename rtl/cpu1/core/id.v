@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // 译码模块 (增加 INST_TYPE_CUSTOM 解码)
 module cpu1_id(

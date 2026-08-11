@@ -14,7 +14,7 @@
  limitations under the License.
  */
 
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // 将指令向译码模块传递
 module cpu2_if_id(

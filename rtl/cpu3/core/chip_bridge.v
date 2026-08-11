@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // Shared-clock byte bridge. One request is accepted at a time.
 // Request frame: A5, command, address[31:0], write_data[31:0].

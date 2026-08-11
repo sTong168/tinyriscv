@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // LM75 I2C master. A high-level rT request starts one complete read and
 // remains active until done_o is asserted. The latest byte is also exposed

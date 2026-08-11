@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // RV32I instruction decoder.
 module cpu3_id(

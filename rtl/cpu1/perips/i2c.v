@@ -10,7 +10,7 @@
 // Transaction started by writing OUTPUT register:
 //   START -> (slave_addr<<1|0) -> ACK -> 0x00(pointer) -> ACK ->
 //   repeated START -> (slave_addr<<1|1) -> ACK -> read 1 byte -> NACK -> STOP
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 module cpu1_i2c(
     input  wire        clk,

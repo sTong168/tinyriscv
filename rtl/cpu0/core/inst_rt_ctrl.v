@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // I2C发送模块
 // 用于实现自定义指令rT的I2C读写功能

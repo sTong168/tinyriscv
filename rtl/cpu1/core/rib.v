@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 
 // RIB总线模块 — cpu0-style req/ack; s0=cpu1_bridge(ROM/RAM), s2=LFSR, s3=UART, s6=PWM, s7=I2C

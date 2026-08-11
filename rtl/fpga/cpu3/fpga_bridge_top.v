@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // FPGA-side bridge endpoint and external memories.
 module fpga_bridge(

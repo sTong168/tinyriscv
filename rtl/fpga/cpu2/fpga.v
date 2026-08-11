@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // FPGA综合顶层
 module cpu2_fpga_top(

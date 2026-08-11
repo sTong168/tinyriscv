@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // Chip-side bridge to external (FPGA-side) ROM/RAM over an 8-bit frame bus.
 // No storage lives inside this module: every access performs a full frame

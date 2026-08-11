@@ -1,4 +1,4 @@
- /*
+/*
  Copyright 2019 Blue Liang, liangkangnan@163.com
 
  Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +14,11 @@
  limitations under the License.
  */
 
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // 控制模块
-// 发出跳转、暂停流水线信号
+// slave 等 ACK 时屏蔽 jump（避免误 Hold_Id_clr）；但放行 hold_flag_ex（rT）。
+// 否则 16-bit bridge 取指等 ACK 会掐断 rT stall → Temp=0xFF。
 module cpu1_ctrl(
 
     input wire clk,
@@ -29,7 +30,7 @@ module cpu1_ctrl(
     input wire hold_flag_ex_i,
     input wire ls_flag_i,
 
-    // from cpu1_rib
+    // from cpu1_rib: {master_req_hold, slave_wait_ack}
     input wire [1:0] hold_flag_rib_i,
 
     output reg[`Hold_Flag_Bus] hold_flag_o,
@@ -45,40 +46,35 @@ module cpu1_ctrl(
     reg ls_flag;
 
     always @ (*) begin
-        if (hold_flag_rib_i[0] == `HoldDisable) begin // slave没有请求总线
+        if (hold_flag_rib_i[0] == `HoldDisable) begin
             jump_flag = jump_flag_i;
             hold_flag_ex = hold_flag_ex_i;
-            if (hold_flag_rib_i[1] == `HoldEnable) begin // master请求总线
+            if (hold_flag_rib_i[1] == `HoldEnable) begin
                 ls_flag = ls_flag_i;
             end else begin
                 ls_flag = `False;
             end
         end else begin
             jump_flag = `JumpDisable;
-            hold_flag_ex = `HoldDisable;
+            hold_flag_ex = hold_flag_ex_i;
             ls_flag = `False;
         end
-
     end
 
     always @ (*) begin
         jump_addr_o = jump_addr_i;
         jump_flag_o = jump_flag_i;
-        // 默认不暂停
         hold_flag_o = `Hold_None;
-        // 按优先级处理不同模块的请求
+
         if (jump_flag == `JumpEnable) begin
-            // 暂停整条流水线
             hold_flag_o = `Hold_Id_clr;
         end else if (hold_flag_ex == `HoldEnable) begin
             hold_flag_o = `Hold_If_keep_Id_clr;
         end else if (ls_flag == `True) begin
             hold_flag_o = `Hold_If_keep_Id_clr;
         end else if (hold_flag_rib_i[0] == `HoldEnable) begin
-            // 暂停PC，即取指地址不变
             hold_flag_o = `Hold_Id_keep;
         end else if (hold_flag_rib_i[1] == `HoldEnable) begin
-            // 暂停PC，即取指地址不变
             hold_flag_o = `Hold_Pc;
         end else begin
             hold_flag_o = `Hold_None;

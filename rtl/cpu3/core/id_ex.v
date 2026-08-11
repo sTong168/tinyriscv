@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // ID/EX pipeline register for the RV32I datapath.
 module cpu3_id_ex(

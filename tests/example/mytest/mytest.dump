@@ -10,7 +10,7 @@ Disassembly of section .init:
    8:	84018113          	addi	sp,gp,-1984 # 10000040 <__freertos_irq_stack_top>
    c:	00000d13          	li	s10,0
   10:	00000d93          	li	s11,0
-  14:	24c00513          	li	a0,588
+  14:	27c00513          	li	a0,636
   18:	10000597          	auipc	a1,0x10000
   1c:	fe858593          	addi	a1,a1,-24 # 10000000 <__bss_start>
   20:	10000617          	auipc	a2,0x10000
@@ -29,7 +29,7 @@ Disassembly of section .init:
   54:	00052023          	sw	zero,0(a0)
   58:	00450513          	addi	a0,a0,4
   5c:	feb56ce3          	bltu	a0,a1,54 <__stack_size+0x34>
-  60:	184000ef          	jal	ra,1e4 <_init>
+  60:	1b4000ef          	jal	ra,214 <_init>
   64:	124000ef          	jal	ra,188 <main>
   68:	00100d13          	li	s10,1
 
@@ -75,7 +75,7 @@ Disassembly of section .text:
 000000f0 <test_if_asynchronous>:
   f0:	01f55613          	srli	a2,a0,0x1f
   f4:	00060663          	beqz	a2,100 <handle_synchronous>
-  f8:	120000ef          	jal	ra,218 <trap_handler>
+  f8:	150000ef          	jal	ra,248 <trap_handler>
   fc:	00c0006f          	j	108 <asynchronous_return>
 
 00000100 <handle_synchronous>:
@@ -132,44 +132,56 @@ Disassembly of section .text:
  1b8:	601107b7          	lui	a5,0x60110
  1bc:	10000713          	li	a4,256
  1c0:	00e7a023          	sw	a4,0(a5) # 60110000 <__global_pointer$+0x5010f800>
- 1c4:	600407b7          	lui	a5,0x60040
- 1c8:	00f00713          	li	a4,15
- 1cc:	00e7a023          	sw	a4,0(a5) # 60040000 <__global_pointer$+0x5003f800>
- 1d0:	00000793          	li	a5,0
- 1d4:	00078513          	mv	a0,a5
- 1d8:	00c12403          	lw	s0,12(sp)
- 1dc:	01010113          	addi	sp,sp,16
- 1e0:	00008067          	ret
+ 1c4:	600207b7          	lui	a5,0x60020
+ 1c8:	10000713          	li	a4,256
+ 1cc:	00e7a023          	sw	a4,0(a5) # 60020000 <__global_pointer$+0x5001f800>
+ 1d0:	601207b7          	lui	a5,0x60120
+ 1d4:	02500713          	li	a4,37
+ 1d8:	00e7a023          	sw	a4,0(a5) # 60120000 <__global_pointer$+0x5011f800>
+ 1dc:	600307b7          	lui	a5,0x60030
+ 1e0:	02000713          	li	a4,32
+ 1e4:	00e7a023          	sw	a4,0(a5) # 60030000 <__global_pointer$+0x5002f800>
+ 1e8:	601307b7          	lui	a5,0x60130
+ 1ec:	01000713          	li	a4,16
+ 1f0:	00e7a023          	sw	a4,0(a5) # 60130000 <__global_pointer$+0x5012f800>
+ 1f4:	600407b7          	lui	a5,0x60040
+ 1f8:	00f00713          	li	a4,15
+ 1fc:	00e7a023          	sw	a4,0(a5) # 60040000 <__global_pointer$+0x5003f800>
+ 200:	00000793          	li	a5,0
+ 204:	00078513          	mv	a0,a5
+ 208:	00c12403          	lw	s0,12(sp)
+ 20c:	01010113          	addi	sp,sp,16
+ 210:	00008067          	ret
 
-000001e4 <_init>:
- 1e4:	ff010113          	addi	sp,sp,-16
- 1e8:	00812623          	sw	s0,12(sp)
- 1ec:	01010413          	addi	s0,sp,16
- 1f0:	000007b7          	lui	a5,0x0
- 1f4:	07078793          	addi	a5,a5,112 # 70 <trap_entry>
- 1f8:	30579073          	csrw	mtvec,a5
- 1fc:	000027b7          	lui	a5,0x2
- 200:	88878793          	addi	a5,a5,-1912 # 1888 <_data_lma+0x163c>
- 204:	30079073          	csrw	mstatus,a5
- 208:	00000013          	nop
- 20c:	00c12403          	lw	s0,12(sp)
- 210:	01010113          	addi	sp,sp,16
- 214:	00008067          	ret
-
-00000218 <trap_handler>:
- 218:	fe010113          	addi	sp,sp,-32
- 21c:	00112e23          	sw	ra,28(sp)
- 220:	00812c23          	sw	s0,24(sp)
- 224:	02010413          	addi	s0,sp,32
- 228:	fea42623          	sw	a0,-20(s0)
- 22c:	feb42423          	sw	a1,-24(s0)
- 230:	00000097          	auipc	ra,0x0
- 234:	000000e7          	jalr	zero # 0 <_start>
+00000214 <_init>:
+ 214:	ff010113          	addi	sp,sp,-16
+ 218:	00812623          	sw	s0,12(sp)
+ 21c:	01010413          	addi	s0,sp,16
+ 220:	000007b7          	lui	a5,0x0
+ 224:	07078793          	addi	a5,a5,112 # 70 <trap_entry>
+ 228:	30579073          	csrw	mtvec,a5
+ 22c:	000027b7          	lui	a5,0x2
+ 230:	88878793          	addi	a5,a5,-1912 # 1888 <_data_lma+0x160c>
+ 234:	30079073          	csrw	mstatus,a5
  238:	00000013          	nop
- 23c:	01c12083          	lw	ra,28(sp)
- 240:	01812403          	lw	s0,24(sp)
- 244:	02010113          	addi	sp,sp,32
- 248:	00008067          	ret
+ 23c:	00c12403          	lw	s0,12(sp)
+ 240:	01010113          	addi	sp,sp,16
+ 244:	00008067          	ret
+
+00000248 <trap_handler>:
+ 248:	fe010113          	addi	sp,sp,-32
+ 24c:	00112e23          	sw	ra,28(sp)
+ 250:	00812c23          	sw	s0,24(sp)
+ 254:	02010413          	addi	s0,sp,32
+ 258:	fea42623          	sw	a0,-20(s0)
+ 25c:	feb42423          	sw	a1,-24(s0)
+ 260:	00000097          	auipc	ra,0x0
+ 264:	000000e7          	jalr	zero # 0 <_start>
+ 268:	00000013          	nop
+ 26c:	01c12083          	lw	ra,28(sp)
+ 270:	01812403          	lw	s0,24(sp)
+ 274:	02010113          	addi	sp,sp,32
+ 278:	00008067          	ret
 
 Disassembly of section .stack:
 

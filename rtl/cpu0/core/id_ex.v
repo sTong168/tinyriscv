@@ -14,7 +14,7 @@
  limitations under the License.                                          
  */
 
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // 灏嗚瘧鐮佺粨鏋滃悜鎵ц妯″潡浼犻€?
 module id_ex(

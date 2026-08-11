@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // Chip-side SoC. Program and data storage are external to this top level.
 module cpu3_tinyriscv_soc_top(

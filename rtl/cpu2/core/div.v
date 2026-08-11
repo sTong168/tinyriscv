@@ -14,7 +14,7 @@
  limitations under the License.                                          
  */
 
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // 除法模块
 // 试商法实现32位整数除法

@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // tinyriscv处理器核顶层模块
 module tinyriscv(

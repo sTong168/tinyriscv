@@ -1,25 +1,15 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
-
-// I2C主机控制器 (轮询模式)
-// 地址映射:
-//   0x70010000: 从设备地址寄存器 (写), bit[7:1]=7bit地址
-//   0x70020000: 输出/状态寄存器 (读), [15:0]=两字节数据, [31:30]=buzy
-//   0x70030000: 发送触发寄存器 (写), 写入8位数据后触发完整I2C收发序列
-//
-// I2C序列 (写入0x70030000时触发):
-//   START + 从设备地址[7:1]+W + ACK + 数据(写入的8位) + ACK +
-//   RX byte1 + ACK + RX byte2 + NACK + STOP
-//
-// buzy[1:0]: 00=空闲, 01=正在收/发, 10=接收完毕等待读取
-// CPU读取0x70020000且buzy=10时, 自动清零输出并复位
+// I2C v2 — 接口与 i2c.v 兼容, 内部用 4-phase SCL 状态机
+// 协议: START + Addr+R + ACK + RX byte1 + MACK + RX byte2 + NACK + STOP
+// (跳过写寄存器阶段, 直接读)
 
 module i2c(
 
     input  wire        clk    ,
     input  wire        rst    ,
 
-    // RIB slave interface (轮询, 无ack_o)
+    // RIB slave interface
     input  wire        we_i   ,
     input  wire [31:0] addr_i ,
     input  wire [31:0] data_i ,
@@ -27,98 +17,284 @@ module i2c(
     input  wire        req_i  ,
 
     // I2C interface
-    output reg         scl_o    ,
-    output reg         scl_oe   ,
+    output wire        scl_o    ,
+    output wire        scl_oe   ,
     input  wire        scl_in   ,
-    output reg         sda_o    ,
-    output reg         sda_oe   ,
+    output wire        sda_o    ,
+    output wire        sda_oe   ,
     input  wire        sda_in
 
-    );
+);
 
     // ============================================================
     // 地址译码
     // ============================================================
-    wire is_dev_addr = (addr_i[27:0] == 28'h10000);  // 0x70010000: 从设备地址写
-    wire is_tx_data  = (addr_i[27:0] == 28'h20000);  // 0x70020000: 输出/状态读
-    wire is_rx_data  = (addr_i[27:0] == 28'h30000);  // 0x70030000: 触发写
+    wire is_dev_addr = (addr_i[27:0] == 28'h10000);  // 0x70010000
+    wire is_tx_data  = (addr_i[27:0] == 28'h20000);  // 0x70020000: 触发
+    wire is_rx_data  = (addr_i[27:0] == 28'h30000);  // 0x70030000: 读数据
 
     // ============================================================
     // 寄存器
     // ============================================================
-    reg [7:0]  dev_addr_reg;  // 从设备地址 bit[7:1]=地址
-    reg [7:0]  tx_data_reg;   // 待发送数据
+    reg [7:0]  dev_addr_reg;  // 从设备地址 bit[7:1]=7bit地址
     reg [15:0] rx_data_reg;   // 已接收两字节数据
-    reg [1:0]  buzy;          // 00=空闲, 01=忙, 10=完成待读取
+    reg [1:0]  buzy;          // 00=空闲, 01=忙, 10=完成
 
     // ============================================================
-    // I2C时钟分频
-    // SCL频率 = sys_clk / (2 * SCL_DIV)
+    // SCL 分频参数
     // ============================================================
-    parameter integer SCL_DIV = 250;
+    parameter integer SCL_DIV = 250;        // 半周期 (同 i2c.v)
+    localparam  SCL_FULL = 2 * SCL_DIV;     // 完整 SCL 周期
+    localparam  SCL_Q1   = (SCL_DIV / 2) - 1;
+    localparam  SCL_Q2   = SCL_DIV - 1;
+    localparam  SCL_Q3   = SCL_DIV + SCL_Q1;
+    localparam  SCL_Q4   = SCL_FULL - 1;
+
+    // ============================================================
+    // 4-phase SCL 时钟
+    // ============================================================
+    reg [15:0] cnt_delay;
+    reg [2:0]  cnt;            // 0=pos, 1=hig, 2=neg, 3=low
+    reg        scl_r;
+    reg        timer_run;      // 1=SCL计时中, 0=暂停
+
+    `define SCL_POS  (cnt == 3'd0)
+    `define SCL_HIG  (cnt == 3'd1)
+    `define SCL_NEG  (cnt == 3'd2)
+    `define SCL_LOW  (cnt == 3'd3)
+
+    always @(posedge clk) begin
+        if (rst == `RstEnable) begin
+            cnt_delay <= 16'd0;
+        end else if (timer_run) begin
+            if (cnt_delay == SCL_Q4)
+                cnt_delay <= 16'd0;
+            else
+                cnt_delay <= cnt_delay + 1'b1;
+        end else begin
+            cnt_delay <= 16'd0;
+        end
+    end
+
+    always @(posedge clk) begin
+        if (rst == `RstEnable) begin
+            cnt <= 3'd5;
+        end else if (timer_run) begin
+            case (cnt_delay)
+                SCL_Q1: cnt <= 3'd1;
+                SCL_Q2: cnt <= 3'd2;
+                SCL_Q3: cnt <= 3'd3;
+                SCL_Q4: cnt <= 3'd0;
+                default: cnt <= 3'd5;
+            endcase
+        end else begin
+            cnt <= 3'd5;
+        end
+    end
+
+    always @(posedge clk) begin
+        if (rst == `RstEnable) begin
+            scl_r <= 1'b1;
+        end else if (`SCL_POS) begin
+            scl_r <= 1'b1;
+        end else if (`SCL_NEG) begin
+            scl_r <= 1'b0;
+        end
+    end
 
     // ============================================================
     // 状态机
     // ============================================================
-    localparam S_IDLE       = 5'd0;
-    localparam S_START_A    = 5'd1;   // SCL=1, SDA=1
-    localparam S_START_B    = 5'd2;   // SCL=1, SDA=0
-    localparam S_START_C    = 5'd3;   // SCL=0, SDA=0
-    localparam S_TX_L       = 5'd4;   // SCL=0, 设置SDA
-    localparam S_TX_H       = 5'd5;   // SCL=1, 从设备采样
-    localparam S_ACK_L      = 5'd6;   // SCL=0, 释放SDA(收从设备ACK)
-    localparam S_ACK_H      = 5'd7;   // SCL=1, 采样ACK
-    localparam S_RX_L       = 5'd8;   // SCL=0, 释放SDA(从设备驱动)
-    localparam S_RX_H       = 5'd9;   // SCL=1, 采样SDA
-    localparam S_MACK_L     = 5'd10;  // SCL=0, 主机发ACK(SDA=0)
-    localparam S_MACK_H     = 5'd11;  // SCL=1, 保持ACK
-    localparam S_NACK_L     = 5'd12;  // SCL=0, 主机发NACK(SDA=1)
-    localparam S_NACK_H     = 5'd13;  // SCL=1, 保持NACK
-    localparam S_STOP_A     = 5'd14;  // SCL=0, SDA=0
-    localparam S_STOP_B     = 5'd15;  // SCL=1, SDA=0
-    localparam S_STOP_C     = 5'd16;  // SCL=1, SDA=1 (STOP)
-    localparam S_DONE       = 5'd17;
-    localparam S_RSTART     = 5'd18;  // Repeated START prep: SCL=0, SDA释放
+    localparam ST_IDLE   = 4'd0;
+    localparam ST_START  = 4'd1;
+    localparam ST_ADDR   = 4'd2;
+    localparam ST_ACK1   = 4'd3;
+    localparam ST_DATA1  = 4'd4;
+    localparam ST_ACK2   = 4'd5;
+    localparam ST_DATA2  = 4'd6;
+    localparam ST_NACK   = 4'd7;
+    localparam ST_STOP   = 4'd8;
 
-    reg [4:0] state;
+    reg [3:0]  cstate;
+    reg        sda_link, sda_r;
+    reg [3:0]  num;
+    reg [7:0]  db_r;          // 要发送的地址字节
 
     // ============================================================
-    // 半周期计数器
+    // I2C IO (拆分模式)
     // ============================================================
-    reg [15:0] timer;
-    wire timer_done = (timer == SCL_DIV - 1);
+    // scl: 空闲/STOP时释放(scl_oe=0), 其余时间由scl_r驱动
+    assign scl_oe = (cstate == ST_IDLE || cstate == ST_STOP) ? 1'b0 : 1'b1;
+    assign scl_o  = scl_r;
+    // sda: sda_link=1时主机驱动, sda_link=0时释放(sda_oe=0)
+    assign sda_oe = sda_link;
+    assign sda_o  = sda_r;
 
     // ============================================================
-    // 位计数器 (0..7 数据位, 8 一帧结束)
+    // 主状态机
     // ============================================================
-    reg [3:0] bit_cnt;
+    always @(posedge clk) begin
+        if (rst == `RstEnable) begin
+            cstate    <= ST_IDLE;
+            sda_r     <= 1'b1;
+            sda_link  <= 1'b0;
+            num       <= 4'd0;
+            buzy      <= `I2C_FREE;
+            timer_run <= 1'b0;
+            rx_data_reg <= 16'd0;
+        end else begin
+
+            if (req_i == `RIB_REQ && we_i == `WriteDisable && is_rx_data && buzy == `I2C_DONE) begin
+                rx_data_reg <= 16'd0;
+                buzy        <= `I2C_FREE;
+                cstate      <= ST_IDLE;
+            end
+            case (cstate)
+
+                // ---------- IDLE: 等触发 ----------
+                ST_IDLE: begin
+                    sda_link <= 1'b1;
+                    sda_r    <= 1'b1;
+                    if (req_i == `RIB_REQ) begin
+                        if (we_i == `WriteEnable) begin
+                            if (is_dev_addr) begin
+                                // 写从设备地址
+                                dev_addr_reg <= data_i[7:0];
+                            end else if (is_tx_data) begin
+                                // 触发: 发 Addr+R, 读温度
+                                db_r      <= {dev_addr_reg[7:1], 1'b1};
+                                cstate    <= ST_START;
+                                buzy      <= `I2C_BUSY;
+                                timer_run <= 1'b1;
+                            end
+                        end
+                    end
+                end
+
+                // ---------- START: SDA↓ while SCL=1 ----------
+                ST_START: begin
+                    if (`SCL_HIG) begin
+                        sda_link <= 1'b1;
+                        sda_r    <= 1'b0;
+                        cstate   <= ST_ADDR;
+                        num      <= 4'd0;
+                    end
+                end
+
+                // ---------- ADDR: 发送 Addr+R 字节 ----------
+                ST_ADDR: begin
+                    if (`SCL_LOW) begin
+                        if (num == 4'd8) begin
+                            num      <= 4'd0;
+                            sda_r    <= 1'b1;
+                            sda_link <= 1'b0;
+                            cstate   <= ST_ACK1;
+                        end else begin
+                            num <= num + 1'b1;
+                            case (num)
+                                4'd0: sda_r <= db_r[7];
+                                4'd1: sda_r <= db_r[6];
+                                4'd2: sda_r <= db_r[5];
+                                4'd3: sda_r <= db_r[4];
+                                4'd4: sda_r <= db_r[3];
+                                4'd5: sda_r <= db_r[2];
+                                4'd6: sda_r <= db_r[1];
+                                4'd7: sda_r <= db_r[0];
+                                default: ;
+                            endcase
+                        end
+                    end
+                end
+
+                // ---------- ACK1: 从设备应答 ----------
+                ST_ACK1: begin
+                    if (`SCL_NEG) begin
+                        cstate <= ST_DATA1;
+                    end
+                end
+
+                // ---------- DATA1: 读 byte1 ----------
+                ST_DATA1: begin
+                    if (`SCL_HIG) begin
+                        num <= num + 1'b1;
+                        case (num)
+                            4'd0: rx_data_reg[15] <= sda_in;
+                            4'd1: rx_data_reg[14] <= sda_in;
+                            4'd2: rx_data_reg[13] <= sda_in;
+                            4'd3: rx_data_reg[12] <= sda_in;
+                            4'd4: rx_data_reg[11] <= sda_in;
+                            4'd5: rx_data_reg[10] <= sda_in;
+                            4'd6: rx_data_reg[9]  <= sda_in;
+                            4'd7: rx_data_reg[8]  <= sda_in;
+                            default: ;
+                        endcase
+                    end else if ((`SCL_NEG) && (num == 4'd8)) begin
+                        num      <= 4'd0;
+                        sda_link <= 1'b1;
+                        sda_r    <= 1'b0;    // ACK
+                        cstate   <= ST_ACK2;
+                    end
+                end
+
+                // ---------- ACK2: 主设备发 ACK ----------
+                ST_ACK2: begin
+                    if (`SCL_LOW) begin
+                        sda_r <= 1'b0;
+                    end else if (`SCL_NEG) begin
+                        cstate   <= ST_DATA2;
+                        sda_link <= 1'b0;
+                        sda_r    <= 1'b1;
+                    end
+                end
+
+                // ---------- DATA2: 读 byte2 ----------
+                ST_DATA2: begin
+                    if (`SCL_HIG) begin
+                        num <= num + 1'b1;
+                        case (num)
+                            4'd0: rx_data_reg[7] <= sda_in;
+                            4'd1: rx_data_reg[6] <= sda_in;
+                            4'd2: rx_data_reg[5] <= sda_in;
+                            4'd3: rx_data_reg[4] <= sda_in;
+                            4'd4: rx_data_reg[3] <= sda_in;
+                            4'd5: rx_data_reg[2] <= sda_in;
+                            4'd6: rx_data_reg[1] <= sda_in;
+                            4'd7: rx_data_reg[0] <= sda_in;
+                            default: ;
+                        endcase
+                    end else if ((`SCL_LOW) && (num == 4'd8)) begin
+                        num      <= 4'd0;
+                        sda_link <= 1'b1;
+                        sda_r    <= 1'b1;    // NACK
+                        cstate   <= ST_NACK;
+                    end
+                end
+
+                // ---------- NACK + 写结果 → STOP ----------
+                ST_NACK: begin
+                    if (`SCL_LOW) begin
+                        sda_r  <= 1'b0;
+                        cstate <= ST_STOP;
+                    end
+                end
+
+                // ---------- STOP: SDA↑ while SCL=1 ----------
+                ST_STOP: begin
+                    if (`SCL_HIG) begin
+                        sda_r     <= 1'b1;
+                        cstate    <= ST_IDLE;
+                        buzy      <= `I2C_DONE;
+                        timer_run <= 1'b0;
+                    end
+                end
+
+                default: cstate <= ST_IDLE;
+            endcase
+        end
+    end
 
     // ============================================================
-    // 移位寄存器
-    // ============================================================
-    reg [7:0] shift_reg;
-
-    // ============================================================
-    // 序列阶段
-    // ============================================================
-    // 0=Addr+W, 1=Data, 2=Addr+R, 3=RX byte1, 4=RX byte2
-    reg [2:0] seq_phase;
-
-    // ============================================================
-    // I2C IO
-    // ============================================================
-    reg sda_sync;
-
-    reg ack_w;  // ACK for Addr+W
-    reg ack_d;  // ACK for Data
-    reg ack_r;  // ACK for Addr+R
-
-
-
-
-    // ============================================================
-    // 读数据输出 (组合逻辑)
-    //   读取0x70020000: 返回 {buzy, 14'd0, rx_data_reg}
+    // 读数据输出 (组合逻辑, 与 i2c.v 一致)
     // ============================================================
     always @(*) begin
         if (req_i == `RIB_REQ && we_i == `WriteDisable && is_rx_data) begin
@@ -133,352 +309,43 @@ module i2c(
     end
 
     // ============================================================
-    // 主状态机
+    // 读清零逻辑 (与 i2c.v 一致)
     // ============================================================
+    // always @(posedge clk) begin
+    //     if (req_i == `RIB_REQ && we_i == `WriteDisable && is_rx_data && buzy == `I2C_DONE) begin
+    //         rx_data_reg <= 16'd0;
+    //         buzy        <= `I2C_FREE;
+    //         cstate      <= ST_IDLE;
+    //     end
+    // end
+
+    reg flag1, flag2, flag3, flag4;
     always @(posedge clk) begin
         if (rst == `RstEnable) begin
-            state        <= S_IDLE;
-            timer        <= 16'd0;
-            bit_cnt      <= 4'd0;
-            shift_reg    <= 8'd0;
-            dev_addr_reg <= 8'd0;
-            tx_data_reg  <= 8'd0;
-            rx_data_reg  <= 16'd0;
-            scl_o        <= 1'b1;
-            sda_o        <= 1'b1;
-            scl_oe       <= 1'b0;
-            sda_oe       <= 1'b0;
-            sda_sync     <= 1'b1;
-            buzy         <= `I2C_FREE;
-            seq_phase    <= 3'd0;
-            ack_w        <= 1'b1;
-            ack_d        <= 1'b1;
-            ack_r        <= 1'b1;
+            flag1 <= 1'b0;
+            flag2 <= 1'b0;
+            flag3 <= 1'b0;
+            flag4 <= 1'b0;
         end else begin
-            // SDA同步 (用于采样)
-            sda_sync <= sda_in;
+            // flag1 <= 1'b0;
+            if (timer_run == 1) begin
+                flag1 <= 1'b1;
+            end 
 
-            // ========== 读取输出寄存器清零逻辑 ==========
-            // 当CPU读取0x70020000且buzy=DONE时, 清零并复位到IDLE
-            if (req_i == `RIB_REQ && we_i == `WriteDisable && is_rx_data && buzy == `I2C_DONE) begin
-                rx_data_reg <= 16'd0;
-                buzy        <= `I2C_FREE;
-                state       <= S_IDLE;
-                seq_phase   <= 3'd0;
+            // flag2 <= 1'b0;
+            if (is_tx_data == 1) begin
+                flag2 <= (req_i == `RIB_REQ)&&(we_i == `WriteEnable);
             end
 
-            case (state)
-                // =================== IDLE ===================
-                S_IDLE: begin
-                    scl_oe   <= 1'b0;  // 释放SCL
-                    sda_oe   <= 1'b0;  // 释放SDA
-                    timer    <= 16'd0;
-                    bit_cnt  <= 4'd0;
+            // flag3 <= 1'b0;
+            if (buzy == `I2C_BUSY) begin
+                flag3 <= 1'b1;
+            end
 
-                    if (req_i == `RIB_REQ) begin
-                        if (we_i == `WriteEnable) begin
-                            if (is_dev_addr) begin
-                                // 写从设备地址
-                                dev_addr_reg <= data_i[7:0];
-                                buzy         <= `I2C_FREE;
-                            end else if (is_tx_data) begin
-                                // 写0x70030000: 触发完整I2C收发序列
-                                tx_data_reg <= data_i[7:0];
-                                // 加载Addr+W到移位寄存器
-                                shift_reg   <= {dev_addr_reg[7:1], 1'b0};
-                                seq_phase   <= 3'd0;
-                                state       <= S_START_A;
-                                buzy        <= `I2C_BUSY;
-                            end else begin
-                                buzy <= `I2C_FREE;
-                            end
-                        end else begin
-                            buzy <= buzy;  // 读操作不影响buzy
-                        end
-                    end
-                end
-
-                // =================== Repeated START 准备 ===================
-                S_RSTART: begin  // SCL=0, 释放SDA(让从设备释放ACK驱动)
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b0;  // 释放SDA, 由上拉电阻拉高
-                    scl_o  <= 1'b0;
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        state <= S_START_A;
-                    end
-                end
-
-                // =================== START条件 ===================
-                S_START_A: begin  // SCL=1, SDA=1 (准备)
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b1;
-                    scl_o  <= 1'b1;
-                    sda_o  <= 1'b1;
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        state <= S_START_B;
-                    end
-                end
-
-                S_START_B: begin  // SCL=1, SDA=1->0 (START)
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b1;
-                    scl_o  <= 1'b1;
-                    sda_o  <= 1'b0;
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        state <= S_START_C;
-                    end
-                end
-
-                S_START_C: begin  // SCL=1->0, SDA=0
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b1;
-                    scl_o  <= 1'b0;
-                    sda_o  <= 1'b0;
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        state <= S_TX_L;
-                    end
-                end
-
-                // =================== 发送数据位 ===================
-                S_TX_L: begin  // SCL=0, 设置SDA (MSB优先)
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b1;
-                    scl_o  <= 1'b0;
-                    sda_o  <= shift_reg[7];
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        state <= S_TX_H;
-                    end
-                end
-
-                S_TX_H: begin  // SCL=1, 从设备采样
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b1;
-                    scl_o  <= 1'b1;
-                    sda_o  <= shift_reg[7];
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        shift_reg <= {shift_reg[6:0], 1'b0};
-                        if (bit_cnt == 4'd7) begin
-                            state   <= S_ACK_L;
-                            bit_cnt <= 4'd0;
-                        end else begin
-                            bit_cnt <= bit_cnt + 4'd1;
-                            state   <= S_TX_L;
-                        end
-                    end
-                end
-
-                // =================== 接收ACK (从设备应答) ===================
-                S_ACK_L: begin  // SCL=0, 释放SDA
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b0;  // 释放SDA
-                    scl_o  <= 1'b0;
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        state <= S_ACK_H;
-                    end
-                end
-
-                S_ACK_H: begin  // SCL=1, 采样ACK
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b0;
-                    scl_o  <= 1'b1;
-                    // 在SCL高电平中点采样从机ACK (0=ACK, 1=NACK)
-                    if (timer == (SCL_DIV >> 1)) begin
-                        case (seq_phase)
-                            3'd0: ack_w <= sda_sync;
-                            3'd1: ack_d <= sda_sync;
-                            3'd2: ack_r <= sda_sync;
-                        endcase
-                    end
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        // 根据序列阶段决定下一步
-                        case (seq_phase)
-                            3'd0: begin  // Addr+W完成 -> 发送数据
-                                seq_phase <= 3'd1;
-                                shift_reg <= tx_data_reg;
-                                bit_cnt   <= 4'd0;
-                                state     <= S_TX_L;
-                            end
-                            3'd1: begin  // 数据发送完成 -> SCL=0释放总线 -> Repeated START -> Addr+R
-                                seq_phase <= 3'd2;
-                                shift_reg <= {dev_addr_reg[7:1], 1'b1}; // Addr+R
-                                bit_cnt   <= 4'd0;
-                                state     <= S_RSTART;
-                            end
-                            3'd2: begin  // Addr+R完成 -> 开始接收byte1
-                                seq_phase <= 3'd3;
-                                bit_cnt   <= 4'd0;
-                                state     <= S_RX_L;
-                            end
-                            default: begin
-                                state <= S_STOP_A;
-                            end
-                        endcase
-                    end
-                end
-
-                // =================== 接收数据位 ===================
-                S_RX_L: begin  // SCL=0, 释放SDA (从设备驱动)
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b0;
-                    scl_o  <= 1'b0;
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        state <= S_RX_H;
-                    end
-                end
-
-                S_RX_H: begin  // SCL=1, 采样SDA
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b0;
-                    scl_o  <= 1'b1;
-                    // 在SCL高半周期中间采样
-                    if (timer == (SCL_DIV >> 1)) begin
-                        shift_reg <= {shift_reg[6:0], sda_sync};
-                        if (seq_phase == 3'd3 || seq_phase == 3'd4) begin
-                        //     $display("[MASTER] RX bit: t=%0d phase=%d bit_cnt=%d timer=%d sda_sync=%b shift_in=%b shift_reg_was=0x%02X",
-                        //         $time, seq_phase, bit_cnt, timer, sda_sync, sda_sync, shift_reg);
-                        end
-                    end
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        if (bit_cnt == 4'd7) begin
-                            bit_cnt <= 4'd0;
-                            if (seq_phase == 3'd3) begin
-                                // byte1完成 -> 存入高8位, 主机发ACK
-                                rx_data_reg[15:8] <= shift_reg;
-                                // $display("[MASTER] RX byte1: t=%0d shift_reg=0x%02X (sda_sync=%b)", $time, shift_reg, sda_sync);
-                                state     <= S_MACK_L;
-                            end else begin
-                                // byte2完成 -> 存入低8位, 主机发NACK
-                                rx_data_reg[7:0] <= shift_reg;
-                                // $display("[MASTER] RX byte2: shift_reg=0x%02X (sda_sync=%b)", shift_reg, sda_sync);
-                                state     <= S_NACK_L;
-                            end
-                        end else begin
-                            bit_cnt <= bit_cnt + 4'd1;
-                            state   <= S_RX_L;
-                        end
-                    end
-                end
-
-                // =================== 主机发ACK (SDA=0) ===================
-                S_MACK_L: begin
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b1;
-                    scl_o  <= 1'b0;
-                    sda_o  <= 1'b0;  // ACK
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        state <= S_MACK_H;
-                    end
-                end
-
-                S_MACK_H: begin
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b1;
-                    scl_o  <= 1'b1;
-                    sda_o  <= 1'b0;  // 保持ACK
-                    if (timer_done) begin
-                        timer     <= 16'd0;
-                        seq_phase <= 3'd4;  // 进入byte2接收
-                        bit_cnt   <= 4'd0;
-                        state     <= S_RX_L;
-                    end
-                end
-
-                // =================== 主机发NACK (SDA=1) ===================
-                S_NACK_L: begin
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b1;
-                    scl_o  <= 1'b0;
-                    sda_o  <= 1'b1;  // NACK
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        state <= S_NACK_H;
-                    end
-                end
-
-                S_NACK_H: begin
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b1;
-                    scl_o  <= 1'b1;
-                    sda_o  <= 1'b1;  // 保持NACK
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        state <= S_STOP_A;
-                    end
-                end
-
-                // =================== STOP条件 ===================
-                S_STOP_A: begin  // SCL=0, SDA=0
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b1;
-                    scl_o  <= 1'b0;
-                    sda_o  <= 1'b0;
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        state <= S_STOP_B;
-                    end
-                end
-
-                S_STOP_B: begin  // SCL=0->1, SDA=0
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b1;
-                    scl_o  <= 1'b1;
-                    sda_o  <= 1'b0;
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        state <= S_STOP_C;
-                    end
-                end
-
-                S_STOP_C: begin  // SCL=1, SDA=0->1 (STOP)
-                    timer  <= timer + 16'd1;
-                    scl_oe <= 1'b1;
-                    sda_oe <= 1'b1;
-                    scl_o  <= 1'b1;
-                    sda_o  <= 1'b1;
-                    if (timer_done) begin
-                        timer <= 16'd0;
-                        buzy   <= `I2C_DONE;
-                        state <= S_DONE;
-                    end
-                end
-
-                // =================== DONE ===================
-                S_DONE: begin
-                    scl_oe <= 1'b0;  // 释放总线
-                    sda_oe <= 1'b0;
-                end
-
-                default: begin
-                    state <= S_IDLE;
-                end
-            endcase
+            // flag4 <= 1'b0;
+            if (cstate != ST_IDLE) begin
+                flag4 <= 1'b1;
+            end
         end
     end
 

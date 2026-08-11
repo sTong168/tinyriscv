@@ -1,4 +1,4 @@
-`include "../core/defines.v"
+`include "../../shared/defines.v"
 
 // sID custom instruction peripheral.
 // It sends the student ID as ASCII characters through UART TXDATA.

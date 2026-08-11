@@ -1,6 +1,6 @@
 `timescale 1 ns / 1 ps
 
-`include "core/defines.v"
+`include "shared/defines.v"
 
 // testbench module for tinyriscv_top_IO
 module riscv_soc_IO_tb;

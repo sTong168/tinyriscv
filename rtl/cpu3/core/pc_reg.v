@@ -1,4 +1,4 @@
-`include "defines.v"
+`include "../../shared/defines.v"
 
 // Program counter register.
 module cpu3_pc_reg(
