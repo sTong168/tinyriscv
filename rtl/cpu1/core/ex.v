@@ -141,9 +141,17 @@ module cpu1_ex(
     assign custom_imm_o       = inst_i[31:20];
     assign custom_rd_waddr_o  = reg_waddr_i;
 
-    assign reg_wdata_o = reg_wdata | custom_wdata | i2c_reg_wdata_i;
-    assign reg_we_o = reg_we || custom_we || i2c_reg_we_i;
-    assign reg_waddr_o = reg_waddr | custom_waddr | i2c_reg_waddr_i;
+    // Gate sideband write data/addr by their own WE.
+    // Bare `|` is wrong: after rT, i2c_reg_waddr/wdata stay latched (we=0),
+    // so later `addi x26,x0,1` became waddr=26|1=27, wdata=1|0x1c=0x1d
+    // (exact failure seen in pre-syn log). Same for custom_* after done.
+    assign reg_wdata_o = reg_wdata
+                       | ({32{custom_we}} & custom_wdata)
+                       | ({32{i2c_reg_we_i}} & i2c_reg_wdata_i);
+    assign reg_we_o    = reg_we || custom_we || i2c_reg_we_i;
+    assign reg_waddr_o = reg_waddr
+                       | ({5{custom_we}} & custom_waddr)
+                       | ({5{i2c_reg_we_i}} & i2c_reg_waddr_i);
 
     assign mem_we_o = mem_we;
     assign mem_req_o = mem_req;

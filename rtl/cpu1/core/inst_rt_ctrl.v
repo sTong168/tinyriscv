@@ -54,9 +54,12 @@ module cpu1_inst_rt_ctrl(
             reg_we_o <= `WriteDisable;
             case (state)
                 S_IDLE: begin
-                    busy_o <= `HoldDisable;
-                    we_o   <= `WriteDisable;
-                    req_o  <= `RIB_NREQ;
+                    busy_o      <= `HoldDisable;
+                    we_o        <= `WriteDisable;
+                    req_o       <= `RIB_NREQ;
+                    reg_we_o    <= `WriteDisable;
+                    reg_waddr_o <= `ZeroReg;
+                    reg_wdata_o <= `ZeroWord;
                     if (start_i == `True) begin
                         saved_rd <= reg_waddr_i;
                         busy_o   <= `HoldEnable;
