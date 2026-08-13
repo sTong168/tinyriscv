@@ -38,8 +38,18 @@ module bridge (
     reg        we        ; // 1 = write, 0 = read
     reg [31:0] rdata     ; // assembled read data
     reg        mem_sel   ; // 0 = rom, 1 = ram
+    reg [15:0] bridge_in_neg ; // negedge-sampled bridge_in
 
 
+
+    // Negedge sampling: bridge_in is stable for the entire half-cycle
+    // when sampled at negedge, avoiding CTS clock delay issues
+    always @(negedge clk) begin
+        if (rst == `RstEnable)
+            bridge_in_neg <= 16'b0;
+        else
+            bridge_in_neg <= bridge_in;
+    end
 
     // State machine
     always @ (posedge clk) begin
@@ -171,11 +181,11 @@ module bridge (
                 end
 
                 S_RECV_DH: begin
-                    rdata[31:16] <= bridge_in;
+                    rdata[31:16] <= bridge_in_neg;
                 end
 
                 S_RECV_DL: begin
-                    rdata[15:0] <= bridge_in;
+                    rdata[15:0] <= bridge_in_neg;
                     // ack_o <= `True;
                 end
             endcase
@@ -184,7 +194,7 @@ module bridge (
 
     // assign data_o = (ack_o == `False) ? `ZeroWord : rdata;
 
-    assign data_o = (ack_o == `False) ? `ZeroWord : {rdata[31:16], bridge_in};
+    assign data_o = (ack_o == `False) ? `ZeroWord : {rdata[31:16], bridge_in_neg};
 
     // always @(posedge clk) begin
     //     if (rst == `RstEnable) begin
