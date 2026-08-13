@@ -32,10 +32,10 @@ module cpu2_ex(
     // from id_ex
     input wire[`InstBus] inst_i,            // 指令内容
     input wire[`InstAddrBus] inst_addr_i,   // 指令地址
-    input wire reg_we_i,                    // 是否写通用寄存器
-    input wire[`RegAddrBus] reg_waddr_i,    // 写通用寄存器地址
-    input wire[`RegBus] reg1_rdata_i,       // 通用寄存器1输入数据
-    input wire[`RegBus] reg2_rdata_i,       // 通用寄存器2输入数据
+    input wire reg_we_i,                    // 是否写�?�用寄存�?
+    input wire[`RegAddrBus] reg_waddr_i,    // 写�?�用寄存器地�?
+    input wire[`RegBus] reg1_rdata_i,       // 通用寄存�?1输入数据
+    input wire[`RegBus] reg2_rdata_i,       // 通用寄存�?2输入数据
     input wire[`MemAddrBus] op1_i,
     input wire[`MemAddrBus] op2_i,
     input wire[`MemAddrBus] op1_jump_i,
@@ -45,20 +45,20 @@ module cpu2_ex(
     input wire[`MemBus] mem_rdata_i,        // 内存输入数据
 
     // to mem (RIB bus)
-    output reg[`MemBus] mem_wdata_o,        // 写内存数据
-    output reg[`MemAddrBus] mem_raddr_o,    // 读内存地址
-    output reg[`MemAddrBus] mem_waddr_o,    // 写内存地址
+    output reg[`MemBus] mem_wdata_o,        // 写内存数�?
+    output reg[`MemAddrBus] mem_raddr_o,    // 读内存地�?
+    output reg[`MemAddrBus] mem_waddr_o,    // 写内存地�?
     output wire mem_we_o,                   // 是否要写内存
     output wire mem_req_o,                  // 请求访问内存标志
 
     // to regs
     output wire[`RegBus] reg_wdata_o,       // 写寄存器数据
-    output wire reg_we_o,                   // 是否要写通用寄存器
-    output wire[`RegAddrBus] reg_waddr_o,   // 写通用寄存器地址
+    output wire reg_we_o,                   // 是否要写通用寄存�?
+    output wire[`RegAddrBus] reg_waddr_o,   // 写�?�用寄存器地�?
 
     // to ctrl
     output wire hold_flag_o,                // 是否暂停标志
-    output wire ls_flag_o,                  // 是否访存标志（load/store）
+    output wire ls_flag_o,                  // 是否访存标志（load/store�?
     output wire jump_flag_o,                // 是否跳转标志
     output wire[`InstAddrBus] jump_addr_o   // 跳转目的地址
 
@@ -89,7 +89,7 @@ module cpu2_ex(
     reg mem_we;
     reg mem_req;
 
-    // ========== sID指令相关寄存器 ==========
+    // ========== sID指令相关寄存�? ==========
     reg[3:0] sid_byte_index;
     reg sid_busy;
     reg[7:0] sid_byte_to_send;
@@ -110,7 +110,7 @@ module cpu2_ex(
     localparam RT_RD_DATA  = 3'd5;
     localparam RT_DONE_S   = 3'd6;
 
-    // 学号ASCII码表（2025210674）
+    // 学号ASCII码表�?2025210674�?
     function [7:0] get_student_id;
         input [3:0] idx;
         begin
@@ -164,7 +164,7 @@ module cpu2_ex(
     assign jump_addr_o = jump_addr;
 
 
-    // 处理 sID 指令（轮询 UART_STATUS，再写 UART_TXDATA）
+    // 处理 sID 指令（轮�? UART_STATUS，再�? UART_TXDATA�?
     always @ (posedge clk) begin
         if (rst == `RstEnable) begin
             sid_byte_index <= 4'd0;
@@ -220,7 +220,7 @@ module cpu2_ex(
     reg rt_seen_busy;
     reg [`RegAddrBus] rt_rd;
 
-    // ========== IF指令相关寄存器 ==========
+    // ========== IF指令相关寄存�? ==========
     reg if_busy;
     reg if_done;
     reg[7:0] if_fire_byte;
@@ -266,7 +266,7 @@ module cpu2_ex(
             case (rt_phase)
                 RT_IDLE: begin
                     if (rt_pwron_cnt >= PWRON_DELAY) begin
-                        rt_phase <= RT_WR_PTR;
+                        rt_phase <= RT_RD_TRIG;
                     end
                 end
                 RT_WR_PTR: begin
@@ -330,8 +330,8 @@ module cpu2_ex(
         end
     end
 
-    // 处理 IF 指令（轮询UART_STATUS后写UART_TXDATA发送1字节, 同sID方式）
-    // 修复: 原实现单周期直写UART_TX, UART忙时写入被丢弃, 改为busy轮询
+    // 处理 IF 指令（轮询UART_STATUS后写UART_TXDATA发�??1字节, 同sID方式�?
+    // 修复: 原实现单周期直写UART_TX, UART忙时写入被丢�?, 改为busy轮询
     always @ (posedge clk) begin
         if (rst == `RstEnable) begin
             if_busy <= 1'b0;
@@ -852,7 +852,7 @@ module cpu2_ex(
                         mem_we = `WriteDisable;
                         if (op1_jump_i == 32'h0) begin
                             if ($signed(op1_i) >= $signed(reg2_rdata_i)) begin
-                                // fire: 发送由if状态机完成(先轮询UART busy再写)
+                                // fire: 发�?�由if状�?�机完成(先轮询UART busy再写)
                                 if (if_busy) begin
                                     hold_flag = `HoldEnable;
                                 end

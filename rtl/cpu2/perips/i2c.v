@@ -61,12 +61,14 @@ module cpu2_i2c (
     // SCL周期 = 2 * tick ≈ 10μs → 100kHz
     localparam HALF_DIV = 16'd250;
 
-    // I2C IO控制 (开漏模式, 三态门pad)
+    // I2C IO控制 (SCL 推挽驱动, 与 cpu0/cpu1/cpu3 一致; SDA 保持开漏)
+    // 原实现 SCL 开漏: 高电平依赖外部上拉爬升, 上拉弱/总线电容大时
+    // SCL 高电平被压缩, LM75 采样失败 → 读回 0x00. 推挽后与其余三核相同.
     reg        scl_drive_low;
     reg        sda_drive_low;
 
-    assign scl_o  = 1'b0;
-    assign scl_oe = scl_drive_low;
+    assign scl_o  = ~scl_drive_low;
+    assign scl_oe = 1'b1;
     assign sda_o  = 1'b0;
     assign sda_oe = sda_drive_low;
 
@@ -89,6 +91,10 @@ module cpu2_i2c (
     reg        busy;
     reg        done;
     reg        err;
+
+    // SCL 高电平中段采样值 (参考 cpu1: SCL 释放后等 SCL_HALF>>1 拍再锁存,
+    // 留出 SDA RC 爬升/LM75 t_AA 时间, 避免在 SCL 上升沿零裕量采样)
+    reg        sda_sample;
 
     // 传输控制
     reg        trans_rw;      // 0=写, 1=读
@@ -155,6 +161,17 @@ module cpu2_i2c (
                 cmd_latched <= 1'b1;
                 cmd_rw <= read_trig;
             end
+        end
+    end
+
+    // SCL 高电平中段锁存 sda_in: SCL 在 tick 边界释放, 等 HALF_DIV>>1 拍
+    // (2.5μs @50MHz) 后采样, 位于 SCL 高电平正中, 与 cpu1/cpu0/cpu3 同级裕量
+    always @(posedge clk) begin
+        if (rst == `RstEnable) begin
+            sda_sample <= 1'b1;
+        end else if ((tick_cnt == (HALF_DIV >> 1)) &&
+                     (state == S_WAIT_ACK_HIGH || state == S_RECV_HIGH)) begin
+            sda_sample <= sda_in;
         end
     end
 
@@ -250,11 +267,12 @@ module cpu2_i2c (
                 S_WAIT_ACK_HIGH: begin
                     scl_drive_low <= 1'b0;
                     sda_drive_low <= 1'b0;
-                    if (sda_in == 1'b1) begin
-                        // NACK
+                    // NACK 只记录 err, 不终止事务 (与 cpu1 一致):
+                    // ACK 采样误判时仍继续读数据位, 避免温度被固定读成 0x00
+                    if (sda_sample == 1'b1) begin
                         err <= 1'b1;
-                        state <= S_STOP_1;
-                    end else if (trans_rw == 1'b0) begin
+                    end
+                    if (trans_rw == 1'b0) begin
                         // ========== 写事务 ==========
                         if (trans_stage == 2'd0) begin
                             // 地址阶段完成, 进入数据阶段
@@ -293,15 +311,15 @@ module cpu2_i2c (
                 S_RECV_HIGH: begin
                     scl_drive_low <= 1'b0;
                     sda_drive_low <= 1'b0;
-                    rx_shift <= {rx_shift[6:0], sda_in};
+                    rx_shift <= {rx_shift[6:0], sda_sample};
                     if (bit_cnt == 4'd7) begin
                         if (trans_rw == 1'b1 && trans_stage == 2'd1) begin
                             // 第一个字节 (MSB) → ACK
-                            rx_high <= {rx_shift[6:0], sda_in};
+                            rx_high <= {rx_shift[6:0], sda_sample};
                             state <= S_SEND_ACK_LOW;
                         end else begin
                             // 第二个字节 (LSB) → NACK
-                            rx_low <= {rx_shift[6:0], sda_in};
+                            rx_low <= {rx_shift[6:0], sda_sample};
                             state <= S_SEND_NACK_LOW;
                         end
                     end else begin

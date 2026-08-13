@@ -112,7 +112,7 @@ module cpu2_tinyriscv_soc_top(
     wire s7_we_o;
 
     // rib hold flags
-    // rib hold: [1]=master 仲裁等待, [0]=slave 外部存储事务等待
+    // rib hold: [1]=master �ٲõȴ�, [0]=slave �ⲿ�洢����ȴ�
     wire rib_hold_flag_m;
     wire rib_hold_flag_s;
     wire [1:0] rib_hold_flag_o = {rib_hold_flag_m, rib_hold_flag_s};
@@ -123,7 +123,7 @@ module cpu2_tinyriscv_soc_top(
     wire s0_done_o;
     wire s1_done_o;
 
-    // tinyriscv处理器核模块例化
+    // tinyriscv��������ģ������
     cpu2_tinyriscv u_tinyriscv(
         .clk(clk),
         .rst(rst),
@@ -146,7 +146,7 @@ module cpu2_tinyriscv_soc_top(
         .rib_hold_flag_i(rib_hold_flag_o)
     );
 
-    // 外部内存桥接 (slave_0 -> external ROM, slave_1 -> external RAM)
+    // �ⲿ�ڴ��Ž� (slave_0 -> external ROM, slave_1 -> external RAM)
     cpu2_mem_bridge u_mem_bridge(
         .clk(clk),
         .rst(rst),
@@ -168,7 +168,7 @@ module cpu2_tinyriscv_soc_top(
         .ext_data_o(bridge_o)
     );
 
-    // uart模块例化
+    // uartģ������
     cpu2_uart uart_0(
         .clk(clk),
         .rst(rst),
@@ -188,10 +188,10 @@ module cpu2_tinyriscv_soc_top(
         .data_i(s7_data_o),
         .data_o(s7_data_i),
         .we_i(s7_we_o),
-        .scl_o(scl_o),
-        .scl_oe(scl_oe),
-        .sda_o(sda_o),
-        .sda_oe(sda_oe),
+        .scl_o(bus_i2c_scl),
+        .scl_oe(_i2c_scl_oe_unused),
+        .sda_o(bus_i2c_sda),
+        .sda_oe(bus_i2c_sda_oe),
         .sda_in(sda_in)
     );
 

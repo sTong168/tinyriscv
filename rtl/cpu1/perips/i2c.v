@@ -1,15 +1,48 @@
-// Simple I2C master peripheral (slave7 = 0x7000_0000)
+// =============================================================================
+// cpu1_i2c - improved MMIO I2C master (drop-in ports / module name)
+// Desktop preview only; does NOT replace project RTL until you choose to.
 //
-// Address map (addr_i lower 28 bits):
-//   0x0010_0000 : slave address register [6:0], default 0x48
-//   0x0020_0000 : output data register [7:0] (write also starts one read transaction)
-//   0x0030_0000 : input  data register [7:0] (last received byte)
-//   0x0000_0000 : status register
-//                 bit0 busy, bit1 done, bit2 ack_write_addr, bit3 ack_ptr, bit4 ack_read_addr
+// Address map (CPU view, slave7 @ 0x7xxx_xxxx; decode uses addr[23:16]):
+//   0x7000_0000  STATUS  RO
+//                  [0] busy
+//                  [1] done   (1-cycle pulse when a command finishes)
+//                  [2] ack_aw   (saw ACK after Addr+W)
+//                  [3] ack_byte (saw ACK after TX data / pointer)
+//                  [4] ack_ar   (saw ACK after Addr+R)
+//                  [5] err      (NACK seen on an expected ACK slot)
+//   0x7010_0000  ADDR    RW  slave address [6:0], reset = 0x48
+//   0x7020_0000  TX      RW  outbound data byte (pointer or write payload)
+//                            writing TX alone does NOT start a transfer
+//   0x7030_0000  RX0     RO  first received byte (LM75 Temp MSB / integer C)
+//   0x7040_0000  CMD     WO  write starts one command (see below)
+//   0x7050_0000  RX1     RO  second received byte (LM75 Temp LSB / fraction)
 //
-// Transaction started by writing OUTPUT register:
-//   START -> (slave_addr<<1|0) -> ACK -> 0x00(pointer) -> ACK ->
-//   repeated START -> (slave_addr<<1|1) -> ACK -> read 1 byte -> NACK -> STOP
+// CMD values (data_i[7:0]):
+//   0  WRITE1   START + AW + TX + STOP
+//   1  READ1    START + AR + RX0 + NACK + STOP
+//   2  READ2    START + AR + RX0 + ACK + RX1 + NACK + STOP
+//   3  WR_RD2   START + AW + TX + Sr + AR + RX0 + ACK + RX1 + NACK + STOP
+//               (recommended LM75 Temp / multi-byte register read)
+//   4  WR_RD1   START + AW + TX + Sr + AR + RX0 + NACK + STOP
+//               (old cpu1 behavior: pointer then 1-byte read)
+//
+// Software examples (after programming):
+//   // LM75 read temperature (integer in RX0)
+//   sw  ADDR, 0x48
+//   sw  TX,   0x00          // pointer = Temp
+//   sw  CMD,  3             // WR_RD2
+//   poll STATUS until !busy; then lw RX0 / RX1
+//
+//   // LM75 write Config (example)
+//   sw  TX,   0x01          // need 2-byte write: use WRITE1 twice or extend later
+//   // For single-byte write to a device that only needs AW+data:
+//   sw  TX,   <byte>
+//   sw  CMD,  0             // WRITE1
+//
+// Pin contract matches current SoC OD remap:
+//   scl_o high = release SCL, low = drive SCL low
+//   sda: oe=1 & sda=0 drives low; oe=0 releases
+// =============================================================================
 `include "../../shared/defines.v"
 
 module cpu1_i2c(
@@ -27,212 +60,411 @@ module cpu1_i2c(
 
     localparam REG_STATUS = 8'h00;
     localparam REG_ADDR   = 8'h10;
-    localparam REG_OUT    = 8'h20;
-    localparam REG_IN     = 8'h30;
+    localparam REG_TX     = 8'h20;
+    localparam REG_RX0    = 8'h30;
+    localparam REG_CMD    = 8'h40;
+    localparam REG_RX1    = 8'h50;
 
-    localparam SCL_HALF = 9'd250;  // 50MHz -> 100kHz
-    localparam I2C_TOTAL_STEPS = 7'd80;
+    localparam CMD_WRITE1 = 8'd0;
+    localparam CMD_READ1  = 8'd1;
+    localparam CMD_READ2  = 8'd2;
+    localparam CMD_WR_RD2 = 8'd3;
+    localparam CMD_WR_RD1 = 8'd4;
 
-    reg [6:0] reg_slave_addr;
-    reg [7:0] reg_out_data;
-    reg [7:0] reg_in_data;
-    reg [4:0] reg_status;
-    reg       start_req;
+    // 50MHz -> ~100kHz (half period = 250 cycles)
+    localparam HALF_DIV = 16'd250;
 
-    reg [6:0] i2c_step;
-    reg [8:0] i2c_ph_cnt;
-    reg [7:0] i2c_rx_byte;
-    reg       i2c_active;
-    reg       i2c_scl_r, i2c_sda_r, i2c_sda_oe_r;
+    localparam S_IDLE      = 5'd0;
+    localparam S_START     = 5'd1;
+    localparam S_SEND_AW   = 5'd2;
+    localparam S_ACK_AW    = 5'd3;
+    localparam S_SEND_TX   = 5'd4;
+    localparam S_ACK_TX    = 5'd5;
+    localparam S_SR_PREP   = 5'd6;
+    localparam S_SR        = 5'd7;
+    localparam S_SEND_AR   = 5'd8;
+    localparam S_ACK_AR    = 5'd9;
+    localparam S_RECV0     = 5'd10;
+    localparam S_ACK_RX0   = 5'd11;
+    localparam S_RECV1     = 5'd12;
+    localparam S_NACK      = 5'd13;
+    localparam S_STOP1     = 5'd14;
+    localparam S_STOP2     = 5'd15;
+    localparam S_STOP3     = 5'd16;
+    localparam S_DONE      = 5'd17;
 
     wire [7:0] reg_sel = addr_i[23:16];
-    wire [7:0] wr_addr = {reg_slave_addr, 1'b0};
-    wire [7:0] rd_addr = {reg_slave_addr, 1'b1};
 
-    always @ (*) begin
-        case (i2c_step)
-            7'd0:  begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=1; end
-            7'd1:  begin i2c_scl_r=1; i2c_sda_r=0; i2c_sda_oe_r=1; end
-            7'd2:  begin i2c_scl_r=0; i2c_sda_r=wr_addr[7]; i2c_sda_oe_r=1; end
-            7'd3:  begin i2c_scl_r=1; i2c_sda_r=wr_addr[7]; i2c_sda_oe_r=1; end
-            7'd4:  begin i2c_scl_r=0; i2c_sda_r=wr_addr[6]; i2c_sda_oe_r=1; end
-            7'd5:  begin i2c_scl_r=1; i2c_sda_r=wr_addr[6]; i2c_sda_oe_r=1; end
-            7'd6:  begin i2c_scl_r=0; i2c_sda_r=wr_addr[5]; i2c_sda_oe_r=1; end
-            7'd7:  begin i2c_scl_r=1; i2c_sda_r=wr_addr[5]; i2c_sda_oe_r=1; end
-            7'd8:  begin i2c_scl_r=0; i2c_sda_r=wr_addr[4]; i2c_sda_oe_r=1; end
-            7'd9:  begin i2c_scl_r=1; i2c_sda_r=wr_addr[4]; i2c_sda_oe_r=1; end
-            7'd10: begin i2c_scl_r=0; i2c_sda_r=wr_addr[3]; i2c_sda_oe_r=1; end
-            7'd11: begin i2c_scl_r=1; i2c_sda_r=wr_addr[3]; i2c_sda_oe_r=1; end
-            7'd12: begin i2c_scl_r=0; i2c_sda_r=wr_addr[2]; i2c_sda_oe_r=1; end
-            7'd13: begin i2c_scl_r=1; i2c_sda_r=wr_addr[2]; i2c_sda_oe_r=1; end
-            7'd14: begin i2c_scl_r=0; i2c_sda_r=wr_addr[1]; i2c_sda_oe_r=1; end
-            7'd15: begin i2c_scl_r=1; i2c_sda_r=wr_addr[1]; i2c_sda_oe_r=1; end
-            7'd16: begin i2c_scl_r=0; i2c_sda_r=wr_addr[0]; i2c_sda_oe_r=1; end
-            7'd17: begin i2c_scl_r=1; i2c_sda_r=wr_addr[0]; i2c_sda_oe_r=1; end
-            7'd18: begin i2c_scl_r=0; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd19: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd20: begin i2c_scl_r=0; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd21: begin i2c_scl_r=1; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd22: begin i2c_scl_r=0; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd23: begin i2c_scl_r=1; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd24: begin i2c_scl_r=0; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd25: begin i2c_scl_r=1; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd26: begin i2c_scl_r=0; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd27: begin i2c_scl_r=1; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd28: begin i2c_scl_r=0; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd29: begin i2c_scl_r=1; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd30: begin i2c_scl_r=0; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd31: begin i2c_scl_r=1; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd32: begin i2c_scl_r=0; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd33: begin i2c_scl_r=1; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd34: begin i2c_scl_r=0; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd35: begin i2c_scl_r=1; i2c_sda_r=1'b0; i2c_sda_oe_r=1; end
-            7'd36: begin i2c_scl_r=0; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd37: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd38: begin i2c_scl_r=0; i2c_sda_r=1; i2c_sda_oe_r=1; end
-            7'd39: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=1; end
-            7'd40: begin i2c_scl_r=1; i2c_sda_r=0; i2c_sda_oe_r=1; end
-            7'd41: begin i2c_scl_r=0; i2c_sda_r=rd_addr[7]; i2c_sda_oe_r=1; end
-            7'd42: begin i2c_scl_r=1; i2c_sda_r=rd_addr[7]; i2c_sda_oe_r=1; end
-            7'd43: begin i2c_scl_r=0; i2c_sda_r=rd_addr[6]; i2c_sda_oe_r=1; end
-            7'd44: begin i2c_scl_r=1; i2c_sda_r=rd_addr[6]; i2c_sda_oe_r=1; end
-            7'd45: begin i2c_scl_r=0; i2c_sda_r=rd_addr[5]; i2c_sda_oe_r=1; end
-            7'd46: begin i2c_scl_r=1; i2c_sda_r=rd_addr[5]; i2c_sda_oe_r=1; end
-            7'd47: begin i2c_scl_r=0; i2c_sda_r=rd_addr[4]; i2c_sda_oe_r=1; end
-            7'd48: begin i2c_scl_r=1; i2c_sda_r=rd_addr[4]; i2c_sda_oe_r=1; end
-            7'd49: begin i2c_scl_r=0; i2c_sda_r=rd_addr[3]; i2c_sda_oe_r=1; end
-            7'd50: begin i2c_scl_r=1; i2c_sda_r=rd_addr[3]; i2c_sda_oe_r=1; end
-            7'd51: begin i2c_scl_r=0; i2c_sda_r=rd_addr[2]; i2c_sda_oe_r=1; end
-            7'd52: begin i2c_scl_r=1; i2c_sda_r=rd_addr[2]; i2c_sda_oe_r=1; end
-            7'd53: begin i2c_scl_r=0; i2c_sda_r=rd_addr[1]; i2c_sda_oe_r=1; end
-            7'd54: begin i2c_scl_r=1; i2c_sda_r=rd_addr[1]; i2c_sda_oe_r=1; end
-            7'd55: begin i2c_scl_r=0; i2c_sda_r=rd_addr[0]; i2c_sda_oe_r=1; end
-            7'd56: begin i2c_scl_r=1; i2c_sda_r=rd_addr[0]; i2c_sda_oe_r=1; end
-            7'd57: begin i2c_scl_r=0; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd58: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd59: begin i2c_scl_r=0; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd60: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd61: begin i2c_scl_r=0; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd62: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd63: begin i2c_scl_r=0; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd64: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd65: begin i2c_scl_r=0; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd66: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd67: begin i2c_scl_r=0; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd68: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd69: begin i2c_scl_r=0; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd70: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd71: begin i2c_scl_r=0; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd72: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd73: begin i2c_scl_r=0; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd74: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=0; end
-            7'd75: begin i2c_scl_r=0; i2c_sda_r=1; i2c_sda_oe_r=1; end
-            7'd76: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=1; end
-            7'd77: begin i2c_scl_r=0; i2c_sda_r=0; i2c_sda_oe_r=1; end
-            7'd78: begin i2c_scl_r=1; i2c_sda_r=0; i2c_sda_oe_r=1; end
-            7'd79: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=1; end
-            default: begin i2c_scl_r=1; i2c_sda_r=1; i2c_sda_oe_r=1; end
-        endcase
+    reg [6:0]  reg_slave_addr;
+    reg [7:0]  reg_tx;
+    reg [7:0]  reg_rx0;
+    reg [7:0]  reg_rx1;
+    reg        busy;
+    reg        done_pulse;
+    reg        ack_aw;
+    reg        ack_byte;
+    reg        ack_ar;
+    reg        err;
+    reg [7:0]  cmd_latched;
+    reg        start_req;
+
+    reg [4:0]  state;
+    reg [15:0] tick_cnt;
+    wire       tick = (tick_cnt == HALF_DIV);
+
+    reg        scl_r;
+    reg        sda_r;
+    reg        sda_oe_r;
+    reg [3:0]  bit_cnt;
+    reg [7:0]  shift;
+    reg [7:0]  rx_shift;
+    reg        want_read;
+    reg        want_tx;
+    reg        want_sr;
+    reg        want_rx1;
+    reg        phase_low;   // 1 = drive/setup on low half, 0 = sample on high half
+
+    wire [7:0] aw_byte = {reg_slave_addr, 1'b0};
+    wire [7:0] ar_byte = {reg_slave_addr, 1'b1};
+
+    assign scl_o    = scl_r;
+    assign sda_o    = sda_r;
+    assign sda_oe_o = sda_oe_r;
+
+    // tick generator
+    always @(posedge clk) begin
+        if (rst == `RstEnable)
+            tick_cnt <= 16'd0;
+        else if (tick)
+            tick_cnt <= 16'd0;
+        else
+            tick_cnt <= tick_cnt + 16'd1;
     end
 
-    assign scl_o    = i2c_active ? i2c_scl_r : 1'b1;
-    assign sda_o    = i2c_active ? i2c_sda_r : 1'b1;
-    assign sda_oe_o = i2c_active ? i2c_sda_oe_r : 1'b0;
-
-    always @ (posedge clk) begin
+    // register writes + command latch
+    always @(posedge clk) begin
         if (rst == `RstEnable) begin
             reg_slave_addr <= 7'h48;
-            reg_out_data   <= 8'h00;
-            reg_in_data    <= 8'h00;
-            reg_status     <= 5'b0;
+            reg_tx         <= 8'h00;
             start_req      <= 1'b0;
-            i2c_step       <= 7'h0;
-            i2c_ph_cnt     <= 9'h0;
-            i2c_rx_byte    <= 8'h0;
-            i2c_active     <= 1'b0;
+            cmd_latched    <= CMD_WR_RD2;
         end else begin
             start_req <= 1'b0;
-            reg_status[1] <= 1'b0; // done pulse
-
-            if (we_i == `WriteEnable) begin
+            if (we_i == `WriteEnable && !busy) begin
                 case (reg_sel)
-                    REG_ADDR: begin
-                        reg_slave_addr <= data_i[6:0];
-                    end
-                    REG_OUT: begin
-                        reg_out_data <= data_i[7:0];
-                        start_req    <= 1'b1;
-                    end
-                    REG_STATUS: begin
-                        if (data_i[1]) begin
-                            reg_status[4:2] <= 3'b000;
-                        end
+                    REG_ADDR: reg_slave_addr <= data_i[6:0];
+                    REG_TX:   reg_tx         <= data_i[7:0];
+                    REG_CMD: begin
+                        cmd_latched <= data_i[7:0];
+                        start_req   <= 1'b1;
                     end
                     default: ;
                 endcase
             end
-
-            if (!i2c_active) begin
-                if (start_req) begin
-                    i2c_active <= 1'b1;
-                    i2c_step   <= 7'h0;
-                    i2c_ph_cnt <= 9'h0;
-                    i2c_rx_byte <= 8'h0;
-                    reg_status[0] <= 1'b1; // busy
-                    reg_status[4:2] <= 3'b000;
-                end
-            end else begin
-                if (i2c_active && i2c_step[0] == 1'b0 &&
-                    i2c_step >= 7'd60 && i2c_step <= 7'd74 &&
-                    i2c_ph_cnt == (SCL_HALF >> 1)) begin
-                    case (i2c_step)
-                        7'd60: i2c_rx_byte[7] <= sda_i;
-                        7'd62: i2c_rx_byte[6] <= sda_i;
-                        7'd64: i2c_rx_byte[5] <= sda_i;
-                        7'd66: i2c_rx_byte[4] <= sda_i;
-                        7'd68: i2c_rx_byte[3] <= sda_i;
-                        7'd70: i2c_rx_byte[2] <= sda_i;
-                        7'd72: i2c_rx_byte[1] <= sda_i;
-                        7'd74: i2c_rx_byte[0] <= sda_i;
-                        default: ;
-                    endcase
-                end
-
-                if (i2c_ph_cnt == (SCL_HALF >> 1)) begin
-                    if (i2c_step == 7'd19) begin
-                        reg_status[2] <= ~sda_i;
-                    end else if (i2c_step == 7'd37) begin
-                        reg_status[3] <= ~sda_i;
-                    end else if (i2c_step == 7'd58) begin
-                        reg_status[4] <= ~sda_i;
-                    end
-                end
-
-                if (i2c_ph_cnt >= SCL_HALF - 1) begin
-                    i2c_ph_cnt <= 9'h0;
-                    if (i2c_step >= I2C_TOTAL_STEPS) begin
-                        i2c_active   <= 1'b0;
-                        reg_status[0] <= 1'b0;
-                        reg_status[1] <= 1'b1;
-                        reg_in_data   <= i2c_rx_byte;
-                    end else begin
-                        i2c_step <= i2c_step + 1'b1;
-                    end
-                end else begin
-                    i2c_ph_cnt <= i2c_ph_cnt + 1'b1;
-                end
-            end
         end
     end
 
-    always @ (*) begin
+    // MMIO read mux
+    always @(*) begin
         case (reg_sel)
-            REG_STATUS: data_o = {27'h0, reg_status};
+            REG_STATUS: data_o = {26'h0, err, ack_ar, ack_byte, ack_aw, done_pulse, busy};
             REG_ADDR:   data_o = {25'h0, reg_slave_addr};
-            REG_OUT:    data_o = {24'h0, reg_out_data};
-            REG_IN:     data_o = {24'h0, reg_in_data};
+            REG_TX:     data_o = {24'h0, reg_tx};
+            REG_RX0:    data_o = {24'h0, reg_rx0};
+            REG_CMD:    data_o = {24'h0, cmd_latched};
+            REG_RX1:    data_o = {24'h0, reg_rx1};
             default:    data_o = 32'h0;
         endcase
+    end
+
+    // main bit-bang FSM (advances on tick)
+    always @(posedge clk) begin
+        if (rst == `RstEnable) begin
+            state      <= S_IDLE;
+            busy       <= 1'b0;
+            done_pulse <= 1'b0;
+            ack_aw     <= 1'b0;
+            ack_byte   <= 1'b0;
+            ack_ar     <= 1'b0;
+            err        <= 1'b0;
+            reg_rx0    <= 8'h00;
+            reg_rx1    <= 8'h00;
+            scl_r      <= 1'b1;
+            sda_r      <= 1'b1;
+            sda_oe_r   <= 1'b0;
+            bit_cnt    <= 4'd0;
+            shift      <= 8'h00;
+            rx_shift   <= 8'h00;
+            want_read  <= 1'b0;
+            want_tx    <= 1'b0;
+            want_sr    <= 1'b0;
+            want_rx1   <= 1'b0;
+            phase_low  <= 1'b1;
+        end else begin
+            done_pulse <= 1'b0;
+
+            if (state == S_IDLE) begin
+                scl_r    <= 1'b1;
+                sda_r    <= 1'b1;
+                sda_oe_r <= 1'b0;
+                if (start_req) begin
+                    busy     <= 1'b1;
+                    ack_aw   <= 1'b0;
+                    ack_byte <= 1'b0;
+                    ack_ar   <= 1'b0;
+                    err      <= 1'b0;
+                    reg_rx0  <= 8'h00;
+                    reg_rx1  <= 8'h00;
+                    bit_cnt  <= 4'd0;
+                    phase_low<= 1'b1;
+
+                    case (cmd_latched)
+                        CMD_WRITE1: begin
+                            want_tx   <= 1'b1;
+                            want_sr   <= 1'b0;
+                            want_read <= 1'b0;
+                            want_rx1  <= 1'b0;
+                        end
+                        CMD_READ1: begin
+                            want_tx   <= 1'b0;
+                            want_sr   <= 1'b0;
+                            want_read <= 1'b1;
+                            want_rx1  <= 1'b0;
+                        end
+                        CMD_READ2: begin
+                            want_tx   <= 1'b0;
+                            want_sr   <= 1'b0;
+                            want_read <= 1'b1;
+                            want_rx1  <= 1'b1;
+                        end
+                        CMD_WR_RD1: begin
+                            want_tx   <= 1'b1;
+                            want_sr   <= 1'b1;
+                            want_read <= 1'b1;
+                            want_rx1  <= 1'b0;
+                        end
+                        default: begin // CMD_WR_RD2
+                            want_tx   <= 1'b1;
+                            want_sr   <= 1'b1;
+                            want_read <= 1'b1;
+                            want_rx1  <= 1'b1;
+                        end
+                    endcase
+                    state <= S_START;
+                end
+            end else if (tick) begin
+                case (state)
+                    // START: SDA falls while SCL high
+                    S_START: begin
+                        if (phase_low) begin
+                            // ensure bus free then pull SDA
+                            scl_r    <= 1'b1;
+                            sda_r    <= 1'b0;
+                            sda_oe_r <= 1'b1;
+                            phase_low <= 1'b0;
+                        end else begin
+                            scl_r     <= 1'b0; // pull clock for first bit
+                            phase_low <= 1'b1;
+                            if (want_tx || want_sr) begin
+                                shift   <= aw_byte;
+                                bit_cnt <= 4'd0;
+                                state   <= S_SEND_AW;
+                            end else begin
+                                shift   <= ar_byte;
+                                bit_cnt <= 4'd0;
+                                state   <= S_SEND_AR;
+                            end
+                        end
+                    end
+
+                    // send 8 bits MSB first (setup on SCL low, hold on SCL high)
+                    S_SEND_AW, S_SEND_TX, S_SEND_AR: begin
+                        if (phase_low) begin
+                            scl_r    <= 1'b0;
+                            sda_r    <= shift[7];
+                            sda_oe_r <= 1'b1;
+                            phase_low <= 1'b0;
+                        end else begin
+                            scl_r <= 1'b1;
+                            if (bit_cnt == 4'd7) begin
+                                bit_cnt   <= 4'd0;
+                                phase_low <= 1'b1;
+                                if (state == S_SEND_AW)
+                                    state <= S_ACK_AW;
+                                else if (state == S_SEND_TX)
+                                    state <= S_ACK_TX;
+                                else
+                                    state <= S_ACK_AR;
+                            end else begin
+                                shift     <= {shift[6:0], 1'b0};
+                                bit_cnt   <= bit_cnt + 4'd1;
+                                phase_low <= 1'b1;
+                            end
+                        end
+                    end
+
+                    S_ACK_AW, S_ACK_TX, S_ACK_AR: begin
+                        if (phase_low) begin
+                            scl_r     <= 1'b0;
+                            sda_oe_r  <= 1'b0; // release for slave ACK
+                            sda_r     <= 1'b1;
+                            phase_low <= 1'b0;
+                        end else begin
+                            scl_r <= 1'b1;
+                            if (sda_i != 1'b0)
+                                err <= 1'b1;
+                            if (state == S_ACK_AW)
+                                ack_aw <= ~sda_i;
+                            else if (state == S_ACK_TX)
+                                ack_byte <= ~sda_i;
+                            else
+                                ack_ar <= ~sda_i;
+
+                            phase_low <= 1'b1;
+                            if (state == S_ACK_AW) begin
+                                if (want_tx) begin
+                                    shift   <= reg_tx;
+                                    bit_cnt <= 4'd0;
+                                    state   <= S_SEND_TX;
+                                end else begin
+                                    // should not happen
+                                    state <= S_STOP1;
+                                end
+                            end else if (state == S_ACK_TX) begin
+                                if (want_sr) begin
+                                    state <= S_SR_PREP;
+                                end else begin
+                                    // WRITE1 done
+                                    state <= S_STOP1;
+                                end
+                            end else begin // ACK_AR
+                                bit_cnt  <= 4'd0;
+                                rx_shift <= 8'h00;
+                                state    <= S_RECV0;
+                            end
+                        end
+                    end
+
+                    // prepare Sr: SCL low, SDA high, then SCL high, then SDA low
+                    S_SR_PREP: begin
+                        if (phase_low) begin
+                            scl_r     <= 1'b0;
+                            sda_r     <= 1'b1;
+                            sda_oe_r  <= 1'b1;
+                            phase_low <= 1'b0;
+                        end else begin
+                            scl_r     <= 1'b1;
+                            phase_low <= 1'b1;
+                            state     <= S_SR;
+                        end
+                    end
+
+                    S_SR: begin
+                        if (phase_low) begin
+                            scl_r     <= 1'b1;
+                            sda_r     <= 1'b0;
+                            sda_oe_r  <= 1'b1;
+                            phase_low <= 1'b0;
+                        end else begin
+                            scl_r     <= 1'b0;
+                            shift     <= ar_byte;
+                            bit_cnt   <= 4'd0;
+                            phase_low <= 1'b1;
+                            state     <= S_SEND_AR;
+                        end
+                    end
+
+                    S_RECV0, S_RECV1: begin
+                        if (phase_low) begin
+                            scl_r     <= 1'b0;
+                            sda_oe_r  <= 1'b0; // master releases
+                            sda_r     <= 1'b1;
+                            phase_low <= 1'b0;
+                        end else begin
+                            scl_r    <= 1'b1;
+                            rx_shift <= {rx_shift[6:0], sda_i};
+                            if (bit_cnt == 4'd7) begin
+                                bit_cnt   <= 4'd0;
+                                phase_low <= 1'b1;
+                                if (state == S_RECV0) begin
+                                    reg_rx0 <= {rx_shift[6:0], sda_i};
+                                    if (want_rx1)
+                                        state <= S_ACK_RX0;
+                                    else
+                                        state <= S_NACK;
+                                end else begin
+                                    reg_rx1 <= {rx_shift[6:0], sda_i};
+                                    state   <= S_NACK;
+                                end
+                            end else begin
+                                bit_cnt   <= bit_cnt + 4'd1;
+                                phase_low <= 1'b1;
+                            end
+                        end
+                    end
+
+                    // master ACK after RX0 when a second byte follows
+                    S_ACK_RX0: begin
+                        if (phase_low) begin
+                            scl_r     <= 1'b0;
+                            sda_r     <= 1'b0;
+                            sda_oe_r  <= 1'b1;
+                            phase_low <= 1'b0;
+                        end else begin
+                            scl_r     <= 1'b1;
+                            bit_cnt   <= 4'd0;
+                            rx_shift  <= 8'h00;
+                            phase_low <= 1'b1;
+                            state     <= S_RECV1;
+                        end
+                    end
+
+                    // master NACK before STOP
+                    S_NACK: begin
+                        if (phase_low) begin
+                            scl_r     <= 1'b0;
+                            sda_r     <= 1'b1;
+                            sda_oe_r  <= 1'b1; // drive NACK = high while OE on
+                            // OD remap: oe & ~sda = 0 when sda=1 -> released high via pull-up
+                            phase_low <= 1'b0;
+                        end else begin
+                            scl_r     <= 1'b1;
+                            phase_low <= 1'b1;
+                            state     <= S_STOP1;
+                        end
+                    end
+
+                    // STOP: SDA low, SCL high, then SDA high
+                    S_STOP1: begin
+                        scl_r     <= 1'b0;
+                        sda_r     <= 1'b0;
+                        sda_oe_r  <= 1'b1;
+                        state     <= S_STOP2;
+                    end
+                    S_STOP2: begin
+                        scl_r    <= 1'b1;
+                        sda_r    <= 1'b0;
+                        sda_oe_r <= 1'b1;
+                        state    <= S_STOP3;
+                    end
+                    S_STOP3: begin
+                        scl_r    <= 1'b1;
+                        sda_r    <= 1'b1;
+                        sda_oe_r <= 1'b1;
+                        state    <= S_DONE;
+                    end
+
+                    S_DONE: begin
+                        sda_oe_r   <= 1'b0;
+                        busy       <= 1'b0;
+                        done_pulse <= 1'b1;
+                        state      <= S_IDLE;
+                    end
+
+                    default: state <= S_IDLE;
+                endcase
+            end
+        end
     end
 
 endmodule

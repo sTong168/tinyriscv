@@ -1,6 +1,19 @@
+// =============================================================================
+// cpu1_inst_rt_ctrl - rT driver for improved cpu1_i2c
+// Desktop preview only; does NOT replace project RTL until you choose to.
+//
+// Behavior:
+//   - Does NOT force slave address every time (uses ADDR reset default 0x48,
+//     or whatever software last programmed into 0x7010_0000)
+//   - Loads TX = 0x00 (LM75 Temp pointer)
+//   - Issues CMD = WR_RD2 (3): write pointer + Sr + read 2 bytes
+//   - Writes rd = RX0 (integer Celsius / Temp MSB), same software-visible
+//     result style as the old rT path
+//
+// Module name / ports match existing cpu1_inst_rt_ctrl for later drop-in.
+// =============================================================================
 `include "../../shared/defines.v"
 
-// rT → 总线访问 cpu1_i2c 外设（不再在 custom_inst 里 bitbang）
 module cpu1_inst_rt_ctrl(
     input  wire        clk,
     input  wire        rst,
@@ -19,15 +32,16 @@ module cpu1_inst_rt_ctrl(
     output reg[`RegBus] reg_wdata_o
 );
 
-    // cpu1_i2c: addr_i[23:16] 选寄存器
-    localparam I2C_STATUS = 32'h70000000; // bit0 busy
-    localparam I2C_ADDR   = 32'h70100000; // slave[6:0]
-    localparam I2C_OUT    = 32'h70200000; // 写触发
-    localparam I2C_IN     = 32'h70300000; // 温度 [7:0]
+    localparam I2C_STATUS = 32'h70000000;
+    localparam I2C_TX     = 32'h70200000;
+    localparam I2C_RX0    = 32'h70300000;
+    localparam I2C_CMD    = 32'h70400000;
+
+    localparam CMD_WR_RD2 = 32'd3;
 
     localparam S_IDLE     = 3'd0;
-    localparam S_SETADDR  = 3'd1;
-    localparam S_TRIGGER  = 3'd2;
+    localparam S_SET_TX   = 3'd1;
+    localparam S_SET_CMD  = 3'd2;
     localparam S_WAITBUSY = 3'd3;
     localparam S_WAITDONE = 3'd4;
     localparam S_READ     = 3'd5;
@@ -57,29 +71,29 @@ module cpu1_inst_rt_ctrl(
                     busy_o      <= `HoldDisable;
                     we_o        <= `WriteDisable;
                     req_o       <= `RIB_NREQ;
-                    reg_we_o    <= `WriteDisable;
                     reg_waddr_o <= `ZeroReg;
                     reg_wdata_o <= `ZeroWord;
                     if (start_i == `True) begin
                         saved_rd <= reg_waddr_i;
                         busy_o   <= `HoldEnable;
-                        state    <= S_SETADDR;
-                        addr_o   <= I2C_ADDR;
-                        wdata_o  <= 32'h48;
+                        // pointer = Temp register
+                        state    <= S_SET_TX;
+                        addr_o   <= I2C_TX;
+                        wdata_o  <= 32'h00;
                         we_o     <= `WriteEnable;
                         req_o    <= `RIB_REQ;
                     end
                 end
 
-                S_SETADDR: begin
-                    state   <= S_TRIGGER;
-                    addr_o  <= I2C_OUT;
-                    wdata_o <= 32'h00;
+                S_SET_TX: begin
+                    state   <= S_SET_CMD;
+                    addr_o  <= I2C_CMD;
+                    wdata_o <= CMD_WR_RD2;
                     we_o    <= `WriteEnable;
                     req_o   <= `RIB_REQ;
                 end
 
-                S_TRIGGER: begin
+                S_SET_CMD: begin
                     state  <= S_WAITBUSY;
                     addr_o <= I2C_STATUS;
                     we_o   <= `WriteDisable;
@@ -100,7 +114,7 @@ module cpu1_inst_rt_ctrl(
                     req_o  <= `RIB_REQ;
                     if (mem_rdata_i[0] == 1'b0) begin
                         state  <= S_READ;
-                        addr_o <= I2C_IN;
+                        addr_o <= I2C_RX0;
                     end
                 end
 
