@@ -32,7 +32,12 @@ module cpu3_tinyriscv(
     output wire[`RegAddrBus] reg_raddr1_o,
     output wire[`RegAddrBus] reg_raddr2_o,
     input wire[`RegBus]     reg_rdata1_i,
-    input wire[`RegBus]     reg_rdata2_i
+    input wire[`RegBus]     reg_rdata2_i,
+    input wire              reg_hold_i,
+    input wire              reg_write_ack_i,
+    output wire             reg_read_req_o,
+    input wire              reg_read_ack_i,
+    output wire             reg_read_consume_o
     );
 
     wire[`InstAddrBus] pc_pc_o;
@@ -87,22 +92,47 @@ module cpu3_tinyriscv(
     reg pc_fetch_pending;
     reg redirect_pending;
     reg[`InstAddrBus] redirect_addr;
-
+    reg decode_pending;
+    reg[`InstBus] decode_inst_q;
+    reg[`InstAddrBus] decode_addr_q;
+    reg reg_write_pending;
+    reg reg_write_sample_wait;
+    reg[`RegAddrBus] reg_write_waddr_q;
+    reg[`RegBus] reg_write_wdata_q;
     // A local peripheral can acknowledge a request in the same cycle. Only
     // stall the pipeline while an access is still outstanding; treating every
     // RIB request as a stall would discard the instruction behind a one-cycle
     // UART write (the IF test writes UART before initializing x31).
     wire mem_hold = mem_pending ||
                     ((ex_mem_req_o == `RIB_REQ) && !rib_ex_done_i);
-    wire fetch_allowed = !mem_hold &&
+    wire write_capture;
+    wire base_pipeline_hold = mem_hold || reg_hold_i ||
+                              reg_write_pending || write_capture ||
+                              reg_write_sample_wait;
+    wire decode_wait = decode_pending && !reg_read_ack_i;
+    wire pipeline_hold = base_pipeline_hold || decode_wait;
+    wire fetch_allowed = !pipeline_hold &&
+                          (ctrl_hold_flag_o < `Hold_Id) &&
                           (ex_jump_flag_o == `JumpDisable) &&
                           (rib_hold_flag_i == `HoldDisable);
     // A branch can be resolved while the sequential instruction fetch is
     // already in flight. That response belongs to the old path and must not
     // be inserted into IF/ID after the PC has been redirected.
-    wire fetch_valid = rib_pc_done_i && !mem_hold &&
+    wire fetch_valid = rib_pc_done_i && !pipeline_hold &&
+                       (ctrl_hold_flag_o < `Hold_Id) &&
                        (ctrl_jump_flag_o == `JumpDisable) &&
                        !redirect_pending;
+
+    // Decode is split around the shared register-file read.  The fetched
+    // instruction is latched once, the top level performs one shared read
+    // transaction, and ID/EX consumes the same instruction exactly once when
+    // the response is available.
+    wire[`InstBus] decode_input_inst = decode_pending ? decode_inst_q : if_inst_o;
+    wire[`InstAddrBus] decode_input_addr = decode_pending ? decode_addr_q : if_inst_addr_o;
+    wire decode_commit = decode_pending && reg_read_ack_i &&
+                         !base_pipeline_hold &&
+                         (ctrl_hold_flag_o < `Hold_Id);
+    wire decode_preserve = decode_pending && !decode_commit;
 
     wire bus_pending = mem_pending;
     assign rib_ex_addr_o = bus_pending ? pending_addr :
@@ -166,13 +196,32 @@ module cpu3_tinyriscv(
                                                 pending_addr[1:0],
                                                 rib_ex_data_i) :
                                     ex_reg_wdata_o;
+    assign write_capture = writeback_we && !reg_write_pending &&
+                           (writeback_waddr != `ZeroReg);
 
-    // shared regs interface
-    assign reg_we_o = writeback_we;
-    assign reg_waddr_o = writeback_waddr;
-    assign reg_wdata_o = writeback_wdata;
+    // Forward the result being written back directly into the decode stage.
+    // This removes the same-edge register-file read/write dependency that can
+    // violate setup in a timed gate-level simulation.
+    wire[`RegBus] id_reg1_rdata_fwd =
+        (writeback_we && (writeback_waddr != `ZeroReg) &&
+         (writeback_waddr == id_reg1_raddr_o)) ?
+            writeback_wdata : reg_rdata1_i;
+    wire[`RegBus] id_reg2_rdata_fwd =
+        (writeback_we && (writeback_waddr != `ZeroReg) &&
+         (writeback_waddr == id_reg2_raddr_o)) ?
+            writeback_wdata : reg_rdata2_i;
+
+    // Register the writeback inside CPU3 and hold it until the shared file
+    // acknowledges the commit.  The top level therefore samples a bus that
+    // has been stable for a full cycle instead of the same edge that changes
+    // ID/EX and the combinational execute result.
+    assign reg_we_o = reg_write_pending;
+    assign reg_waddr_o = reg_write_waddr_q;
+    assign reg_wdata_o = reg_write_wdata_q;
     assign reg_raddr1_o = id_reg1_raddr_o;
     assign reg_raddr2_o = id_reg2_raddr_o;
+    assign reg_read_req_o = decode_pending && !reg_read_ack_i;
+    assign reg_read_consume_o = decode_commit;
     wire gated_jump_flag = ex_jump_flag_o && !mem_pending && !ex_mem_req_o;
     wire pc_jump_flag = (gated_jump_flag &&
                          (!pc_fetch_pending || rib_pc_done_i)) ||
@@ -192,6 +241,13 @@ module cpu3_tinyriscv(
             pc_fetch_pending <= 1'b0;
             redirect_pending <= 1'b0;
             redirect_addr <= `ZeroWord;
+            decode_pending <= 1'b0;
+            decode_inst_q <= `INST_NOP;
+            decode_addr_q <= `ZeroWord;
+            reg_write_pending <= 1'b0;
+            reg_write_sample_wait <= 1'b0;
+            reg_write_waddr_q <= `ZeroReg;
+            reg_write_wdata_q <= `ZeroWord;
         end else begin
             if (gated_jump_flag && pc_fetch_pending && !rib_pc_done_i) begin
                 redirect_pending <= 1'b1;
@@ -220,6 +276,31 @@ module cpu3_tinyriscv(
             end else if (!pc_fetch_pending && fetch_allowed) begin
                 pc_fetch_pending <= 1'b1;
             end
+
+            if (decode_pending) begin
+                if (decode_commit)
+                    decode_pending <= 1'b0;
+            end else if ((if_inst_o != `INST_NOP) &&
+                         !base_pipeline_hold &&
+                         (ctrl_hold_flag_o < `Hold_Id) &&
+                         (ctrl_jump_flag_o == `JumpDisable)) begin
+                decode_pending <= 1'b1;
+                decode_inst_q <= if_inst_o;
+                decode_addr_q <= if_inst_addr_o;
+            end
+
+            if (reg_write_pending) begin
+                if (reg_write_ack_i)
+                    reg_write_pending <= 1'b0;
+            end else if (reg_write_sample_wait) begin
+                reg_write_sample_wait <= 1'b0;
+                reg_write_pending <= 1'b1;
+            end else if (writeback_we && (writeback_waddr != `ZeroReg)) begin
+                reg_write_sample_wait <= 1'b1;
+                reg_write_waddr_q <= writeback_waddr;
+                reg_write_wdata_q <= writeback_wdata;
+            end
+
         end
     end
 
@@ -237,7 +318,7 @@ module cpu3_tinyriscv(
         .jump_flag_i(gated_jump_flag),
         .jump_addr_i(ex_jump_addr_o),
         .hold_flag_ex_i(ex_hold_flag_o),
-        .hold_flag_mem_i(mem_hold),
+        .hold_flag_mem_i(pipeline_hold),
         .hold_flag_rib_i(rib_hold_flag_i),
         .hold_flag_o(ctrl_hold_flag_o),
         .jump_flag_o(ctrl_jump_flag_o),
@@ -251,15 +332,16 @@ module cpu3_tinyriscv(
         .inst_addr_i(pc_pc_o),
         .hold_flag_i(ctrl_hold_flag_o),
         .inst_valid_i(fetch_valid),
+        .preserve_i(decode_preserve),
         .inst_o(if_inst_o),
         .inst_addr_o(if_inst_addr_o)
     );
 
     cpu3_id u_id(
-        .inst_i(if_inst_o),
-        .inst_addr_i(if_inst_addr_o),
-        .reg1_rdata_i(reg_rdata1_i),
-        .reg2_rdata_i(reg_rdata2_i),
+        .inst_i(decode_input_inst),
+        .inst_addr_i(decode_input_addr),
+        .reg1_rdata_i(id_reg1_rdata_fwd),
+        .reg2_rdata_i(id_reg2_rdata_fwd),
         .reg1_raddr_o(id_reg1_raddr_o),
         .reg2_raddr_o(id_reg2_raddr_o),
         .inst_o(id_inst_o),
@@ -285,7 +367,8 @@ module cpu3_tinyriscv(
         .op2_i(id_op2_o),
         .op1_jump_i(id_op1_jump_o),
         .op2_jump_i(id_op2_jump_o),
-        .hold_flag_i(ctrl_hold_flag_o),
+        .hold_flag_i(decode_commit ? ctrl_hold_flag_o : `Hold_Id),
+        .preserve_i(write_capture || reg_write_sample_wait),
         .op1_o(ie_op1_o),
         .op2_o(ie_op2_o),
         .op1_jump_o(ie_op1_jump_o),

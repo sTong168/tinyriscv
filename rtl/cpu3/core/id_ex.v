@@ -14,28 +14,60 @@ module cpu3_id_ex(
     input wire[`MemAddrBus] op1_jump_i,
     input wire[`MemAddrBus] op2_jump_i,
     input wire[`Hold_Flag_Bus] hold_flag_i,
+    input wire preserve_i,
 
-    output wire[`MemAddrBus] op1_o,
-    output wire[`MemAddrBus] op2_o,
-    output wire[`MemAddrBus] op1_jump_o,
-    output wire[`MemAddrBus] op2_jump_o,
-    output wire[`InstBus] inst_o,
-    output wire reg_we_o,
-    output wire[`RegAddrBus] reg_waddr_o,
-    output wire[`RegBus] reg1_rdata_o,
-    output wire[`RegBus] reg2_rdata_o
+    output reg[`MemAddrBus] op1_o,
+    output reg[`MemAddrBus] op2_o,
+    output reg[`MemAddrBus] op1_jump_o,
+    output reg[`MemAddrBus] op2_jump_o,
+    output reg[`InstBus] inst_o,
+    output reg reg_we_o,
+    output reg[`RegAddrBus] reg_waddr_o,
+    output reg[`RegBus] reg1_rdata_o,
+    output reg[`RegBus] reg2_rdata_o
     );
 
     wire hold_en = (hold_flag_i >= `Hold_Id);
+    wire imm_opcode = (inst_i[6:0] == `INST_TYPE_I) ||
+                      (inst_i[6:0] == `INST_TYPE_L);
+    wire[`MemAddrBus] op2_capture = imm_opcode ?
+                                    {{20{inst_i[31]}}, inst_i[31:20]} :
+                                    op2_i;
 
-    cpu3_gen_pipe_dff #(32) inst_ff(clk, rst, hold_en, `INST_NOP, inst_i, inst_o);
-    cpu3_gen_pipe_dff #(1) reg_we_ff(clk, rst, hold_en, `WriteDisable, reg_we_i, reg_we_o);
-    cpu3_gen_pipe_dff #(5) reg_waddr_ff(clk, rst, hold_en, `ZeroReg, reg_waddr_i, reg_waddr_o);
-    cpu3_gen_pipe_dff #(32) reg1_rdata_ff(clk, rst, hold_en, `ZeroWord, reg1_rdata_i, reg1_rdata_o);
-    cpu3_gen_pipe_dff #(32) reg2_rdata_ff(clk, rst, hold_en, `ZeroWord, reg2_rdata_i, reg2_rdata_o);
-    cpu3_gen_pipe_dff #(32) op1_ff(clk, rst, hold_en, `ZeroWord, op1_i, op1_o);
-    cpu3_gen_pipe_dff #(32) op2_ff(clk, rst, hold_en, `ZeroWord, op2_i, op2_o);
-    cpu3_gen_pipe_dff #(32) op1_jump_ff(clk, rst, hold_en, `ZeroWord, op1_jump_i, op1_jump_o);
-    cpu3_gen_pipe_dff #(32) op2_jump_ff(clk, rst, hold_en, `ZeroWord, op2_jump_i, op2_jump_o);
+    always @(posedge clk) begin
+        if (rst == `RstEnable) begin
+            inst_o <= `INST_NOP;
+            reg_we_o <= `WriteDisable;
+            reg_waddr_o <= `ZeroReg;
+            reg1_rdata_o <= `ZeroWord;
+            reg2_rdata_o <= `ZeroWord;
+            op1_o <= `ZeroWord;
+            op2_o <= `ZeroWord;
+            op1_jump_o <= `ZeroWord;
+            op2_jump_o <= `ZeroWord;
+        end else if (preserve_i) begin
+            // Keep the execute inputs stable while writeback samples them.
+        end else if (hold_en) begin
+            inst_o <= `INST_NOP;
+            reg_we_o <= `WriteDisable;
+            reg_waddr_o <= `ZeroReg;
+            reg1_rdata_o <= `ZeroWord;
+            reg2_rdata_o <= `ZeroWord;
+            op1_o <= `ZeroWord;
+            op2_o <= `ZeroWord;
+            op1_jump_o <= `ZeroWord;
+            op2_jump_o <= `ZeroWord;
+        end else begin
+            inst_o <= inst_i;
+            reg_we_o <= reg_we_i;
+            reg_waddr_o <= reg_waddr_i;
+            reg1_rdata_o <= reg1_rdata_i;
+            reg2_rdata_o <= reg2_rdata_i;
+            op1_o <= op1_i;
+            op2_o <= op2_capture;
+            op1_jump_o <= op1_jump_i;
+            op2_jump_o <= op2_jump_i;
+        end
+    end
 
 endmodule

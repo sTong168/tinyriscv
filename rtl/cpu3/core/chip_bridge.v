@@ -54,23 +54,6 @@ module cpu3_chip_bridge(
     assign busy_o = (state != S_IDLE);
     assign done_o = (state == S_RX_D0);
 
-    always @ (*) begin
-        bridge_o = 8'h00;
-        case (state)
-            S_TX_SOF:  bridge_o = FRAME_REQ;
-            S_TX_CMD:  bridge_o = we_reg ? CMD_WRITE : CMD_READ;
-            S_TX_A3:   bridge_o = addr_reg[31:24];
-            S_TX_A2:   bridge_o = addr_reg[23:16];
-            S_TX_A1:   bridge_o = addr_reg[15:8];
-            S_TX_A0:   bridge_o = addr_reg[7:0];
-            S_TX_D3:   bridge_o = wdata_reg[31:24];
-            S_TX_D2:   bridge_o = wdata_reg[23:16];
-            S_TX_D1:   bridge_o = wdata_reg[15:8];
-            S_TX_D0:   bridge_o = wdata_reg[7:0];
-            default:   bridge_o = 8'h00;
-        endcase
-    end
-
     // Include the last response byte combinationally so the consumer can
     // sample a complete word on the done cycle.
     always @ (*) begin
@@ -86,6 +69,7 @@ module cpu3_chip_bridge(
     always @ (posedge clk) begin
         if (rst == `RstEnable) begin
             state <= S_IDLE;
+            bridge_o <= 8'h00;
             we_reg <= `WriteDisable;
             addr_reg <= `ZeroWord;
             wdata_reg <= `ZeroWord;
@@ -100,44 +84,84 @@ module cpu3_chip_bridge(
                         we_reg <= we_i;
                         addr_reg <= addr_i;
                         wdata_reg <= wdata_i;
+                        bridge_o <= FRAME_REQ;
                         state <= S_TX_SOF;
                     end
                 end
-                S_TX_SOF: state <= S_TX_CMD;
-                S_TX_CMD: state <= S_TX_A3;
-                S_TX_A3: state <= S_TX_A2;
-                S_TX_A2: state <= S_TX_A1;
-                S_TX_A1: state <= S_TX_A0;
-                S_TX_A0: state <= S_TX_D3;
-                S_TX_D3: state <= S_TX_D2;
-                S_TX_D2: state <= S_TX_D1;
-                S_TX_D1: state <= S_TX_D0;
-                S_TX_D0: state <= S_RX_SOF;
+                S_TX_SOF: begin
+                    bridge_o <= we_reg ? CMD_WRITE : CMD_READ;
+                    state <= S_TX_CMD;
+                end
+                S_TX_CMD: begin
+                    bridge_o <= addr_reg[31:24];
+                    state <= S_TX_A3;
+                end
+                S_TX_A3: begin
+                    bridge_o <= addr_reg[23:16];
+                    state <= S_TX_A2;
+                end
+                S_TX_A2: begin
+                    bridge_o <= addr_reg[15:8];
+                    state <= S_TX_A1;
+                end
+                S_TX_A1: begin
+                    bridge_o <= addr_reg[7:0];
+                    state <= S_TX_A0;
+                end
+                S_TX_A0: begin
+                    bridge_o <= wdata_reg[31:24];
+                    state <= S_TX_D3;
+                end
+                S_TX_D3: begin
+                    bridge_o <= wdata_reg[23:16];
+                    state <= S_TX_D2;
+                end
+                S_TX_D2: begin
+                    bridge_o <= wdata_reg[15:8];
+                    state <= S_TX_D1;
+                end
+                S_TX_D1: begin
+                    bridge_o <= wdata_reg[7:0];
+                    state <= S_TX_D0;
+                end
+                S_TX_D0: begin
+                    bridge_o <= 8'h00;
+                    state <= S_RX_SOF;
+                end
                 S_RX_SOF: begin
+                    bridge_o <= 8'h00;
                     if (bridge_i == FRAME_RESP) begin
                         state <= S_RX_STAT;
                     end
                 end
                 S_RX_STAT: begin
+                    bridge_o <= 8'h00;
                     rx_status <= bridge_i;
                     state <= S_RX_D3;
                 end
                 S_RX_D3: begin
+                    bridge_o <= 8'h00;
                     rx_d3 <= bridge_i;
                     state <= S_RX_D2;
                 end
                 S_RX_D2: begin
+                    bridge_o <= 8'h00;
                     rx_d2 <= bridge_i;
                     state <= S_RX_D1;
                 end
                 S_RX_D1: begin
+                    bridge_o <= 8'h00;
                     rx_d1 <= bridge_i;
                     state <= S_RX_D0;
                 end
                 S_RX_D0: begin
+                    bridge_o <= 8'h00;
                     state <= S_IDLE;
                 end
-                default: state <= S_IDLE;
+                default: begin
+                    bridge_o <= 8'h00;
+                    state <= S_IDLE;
+                end
             endcase
         end
     end

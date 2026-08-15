@@ -42,6 +42,22 @@ module cpu3_tinyriscv_soc_top(
     output wire[`MemBus]     pwm_data_o
     );
 
+    // The four-CPU top keeps the original shared-register interface. CPU3's
+    // request/ack protocol is terminated locally so this core can be dropped
+    // into the unmodified team top level.
+    wire              core_reg_we;
+    wire[`RegAddrBus] core_reg_waddr;
+    wire[`RegBus]     core_reg_wdata;
+    wire[`RegAddrBus] core_reg_raddr1;
+    wire[`RegAddrBus] core_reg_raddr2;
+    wire[`RegBus]     core_reg_rdata1;
+    wire[`RegBus]     core_reg_rdata2;
+    wire              core_reg_hold;
+    wire              core_reg_write_ack;
+    wire              core_reg_read_req;
+    wire              core_reg_read_ack;
+    wire              core_reg_read_consume;
+
     wire[`MemAddrBus] m0_addr_i;
     wire[`MemBus] m0_data_i;
     wire[`MemBus] m0_data_o;
@@ -239,6 +255,30 @@ module cpu3_tinyriscv_soc_top(
     assign pwm_addr_o = s2_addr_o;
     assign pwm_data_o = s2_data_o;
 
+    cpu3_shared_regs_adapter u_shared_regs_adapter(
+        .clk(clk),
+        .rst(rst),
+        .core_we_i(core_reg_we),
+        .core_waddr_i(core_reg_waddr),
+        .core_wdata_i(core_reg_wdata),
+        .core_raddr1_i(core_reg_raddr1),
+        .core_raddr2_i(core_reg_raddr2),
+        .core_rdata1_o(core_reg_rdata1),
+        .core_rdata2_o(core_reg_rdata2),
+        .core_hold_o(core_reg_hold),
+        .core_write_ack_o(core_reg_write_ack),
+        .core_read_req_i(core_reg_read_req),
+        .core_read_ack_o(core_reg_read_ack),
+        .core_read_consume_i(core_reg_read_consume),
+        .reg_we_o(reg_we_o),
+        .reg_waddr_o(reg_waddr_o),
+        .reg_wdata_o(reg_wdata_o),
+        .reg_raddr1_o(reg_raddr1_o),
+        .reg_raddr2_o(reg_raddr2_o),
+        .reg_rdata1_i(reg_rdata1_i),
+        .reg_rdata2_i(reg_rdata2_i)
+    );
+
     cpu3_tinyriscv u_tinyriscv(
         .clk(clk),
         .rst(cpu_rst),
@@ -261,13 +301,18 @@ module cpu3_tinyriscv_soc_top(
          .send_if_start_o(send_if_start),
          .send_if_done_i(send_if_done),
          .if_data_o(if_data),
-         .reg_we_o(reg_we_o),
-         .reg_waddr_o(reg_waddr_o),
-         .reg_wdata_o(reg_wdata_o),
-         .reg_raddr1_o(reg_raddr1_o),
-         .reg_raddr2_o(reg_raddr2_o),
-         .reg_rdata1_i(reg_rdata1_i),
-         .reg_rdata2_i(reg_rdata2_i)
+         .reg_we_o(core_reg_we),
+         .reg_waddr_o(core_reg_waddr),
+         .reg_wdata_o(core_reg_wdata),
+         .reg_raddr1_o(core_reg_raddr1),
+         .reg_raddr2_o(core_reg_raddr2),
+         .reg_rdata1_i(core_reg_rdata1),
+         .reg_rdata2_i(core_reg_rdata2),
+         .reg_hold_i(core_reg_hold),
+         .reg_write_ack_i(core_reg_write_ack),
+         .reg_read_req_o(core_reg_read_req),
+         .reg_read_ack_i(core_reg_read_ack),
+         .reg_read_consume_o(core_reg_read_consume)
      );
 
     cpu3_chip_bridge u_chip_bridge(
@@ -397,5 +442,94 @@ module cpu3_tinyriscv_soc_top(
         .addr      (m4_addr_i),
         .wdata     (m4_data_i)
     );
+
+endmodule
+
+// Fixed-latency adapter between CPU3's transactional register-file interface
+// and the original combinational-read/synchronous-write shared register file.
+module cpu3_shared_regs_adapter(
+    input wire clk,
+    input wire rst,
+
+    input wire              core_we_i,
+    input wire[`RegAddrBus] core_waddr_i,
+    input wire[`RegBus]     core_wdata_i,
+    input wire[`RegAddrBus] core_raddr1_i,
+    input wire[`RegAddrBus] core_raddr2_i,
+    output wire[`RegBus]    core_rdata1_o,
+    output wire[`RegBus]    core_rdata2_o,
+    output wire             core_hold_o,
+    output wire             core_write_ack_o,
+    input wire              core_read_req_i,
+    output wire             core_read_ack_o,
+    input wire              core_read_consume_i,
+
+    output wire              reg_we_o,
+    output wire[`RegAddrBus] reg_waddr_o,
+    output wire[`RegBus]     reg_wdata_o,
+    output wire[`RegAddrBus] reg_raddr1_o,
+    output wire[`RegAddrBus] reg_raddr2_o,
+    input wire[`RegBus]      reg_rdata1_i,
+    input wire[`RegBus]      reg_rdata2_i
+    );
+
+    reg write_pending;
+    reg read_pending;
+    reg read_ack_q;
+    reg[`RegAddrBus] read_addr1_q;
+    reg[`RegAddrBus] read_addr2_q;
+    reg[`RegBus] read_data1_q;
+    reg[`RegBus] read_data2_q;
+
+    wire write_req = core_we_i && (core_waddr_i != `ZeroReg);
+    assign core_hold_o = write_req && !write_pending;
+    assign core_write_ack_o = write_pending;
+    assign core_read_ack_o = read_ack_q;
+    assign core_rdata1_o = read_ack_q ? read_data1_q : reg_rdata1_i;
+    assign core_rdata2_o = read_ack_q ? read_data2_q : reg_rdata2_i;
+
+    // Match the proven top-level handshake cycle for cycle: commit once on
+    // the first request cycle, then hold ACK until the core drops the request.
+    assign reg_we_o = write_req && !write_pending;
+    assign reg_waddr_o = core_waddr_i;
+    assign reg_wdata_o = core_wdata_i;
+    assign reg_raddr1_o = (read_pending || read_ack_q) ?
+                          read_addr1_q : core_raddr1_i;
+    assign reg_raddr2_o = (read_pending || read_ack_q) ?
+                          read_addr2_q : core_raddr2_i;
+
+    always @(posedge clk) begin
+        if (rst == `RstEnable) begin
+            write_pending <= 1'b0;
+        end else if (write_pending) begin
+            if (!write_req)
+                write_pending <= 1'b0;
+        end else if (write_req) begin
+            write_pending <= 1'b1;
+        end
+    end
+
+    always @(posedge clk) begin
+        if (rst == `RstEnable) begin
+            read_pending <= 1'b0;
+            read_ack_q <= 1'b0;
+            read_addr1_q <= `ZeroReg;
+            read_addr2_q <= `ZeroReg;
+            read_data1_q <= `ZeroWord;
+            read_data2_q <= `ZeroWord;
+        end else if (read_ack_q) begin
+            if (core_read_consume_i)
+                read_ack_q <= 1'b0;
+        end else if (read_pending) begin
+            read_data1_q <= reg_rdata1_i;
+            read_data2_q <= reg_rdata2_i;
+            read_pending <= 1'b0;
+            read_ack_q <= 1'b1;
+        end else if (core_read_req_i) begin
+            read_pending <= 1'b1;
+            read_addr1_q <= core_raddr1_i;
+            read_addr2_q <= core_raddr2_i;
+        end
+    end
 
 endmodule
